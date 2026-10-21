@@ -73,7 +73,27 @@ Pick one of these:
 5. The first time, trust the developer on the phone: **Settings › General › VPN & Device
    Management** › your Apple ID › Trust.
 
-With a free Apple ID, re-run step 4 every 7 days. Your data stays on the phone.
+With a free Apple ID the app stops opening after 7 days. Either re-run step 4, or set up the
+automatic refresh below. Your data stays on the phone either way.
+
+#### Automatic 7-day refresh (free)
+
+Your Mac can rebuild and reinstall the app every night over Wi-Fi, using Xcode's own tools and
+your free Apple ID, so it never expires.
+
+1. Do the Xcode install above once, with your Apple ID selected as the Team.
+2. In Xcode › **Window › Devices and Simulators**, select your iPhone and tick
+   **Connect via network**. The phone can then be updated without the cable while it's on the
+   same Wi-Fi as the Mac.
+3. In Finder, open `tools/auto-refresh/` in this project and double-click
+   **`install-auto-refresh.command`**. Type your iPhone's name when asked. It does a first refresh
+   right away. If macOS asks whether `codesign` may use your keychain, enter your Mac password
+   and choose **Always Allow**.
+
+From then on it runs every night at 3:17 AM, or when the Mac next wakes up. It needs the Mac
+powered on (asleep is fine) and the iPhone on the same Wi-Fi. A failed night is retried the next
+night, and the Mac shows a notification only if the app is getting close to expiring.
+Log: `~/.eznotetaker/refresh.log`.
 
 ### B. TestFlight (built in the cloud, installed from the TestFlight app)
 
@@ -164,4 +184,5 @@ EZNoteTaker/
   Services/       Audio capture, transcription, camera, on-device AI, Claude relays
   Views/          Classes list, live recording, class detail, cheat sheet, study, settings
   Relay/          Mac relay script + installer, GitHub Action (bundled into the app)
+tools/auto-refresh/  Free nightly rebuild + reinstall so the 7-day signature never expires
 ```
