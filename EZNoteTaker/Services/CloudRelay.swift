@@ -44,7 +44,9 @@ enum CloudRelay {
 
     // MARK: Submit
 
-    static func submit(_ lecture: Lecture, settings: AppSettings) async throws {
+    /// - Parameter onProgress: (files uploaded, total files)
+    static func submit(_ lecture: Lecture, settings: AppSettings,
+                       onProgress: @escaping (Int, Int) -> Void = { _, _ in }) async throws {
         let id = lecture.id.uuidString
         let photos = lecture.sortedPhotos
         lecture.promptPhotoOrder = photos.map { $0.id.uuidString }
@@ -53,15 +55,19 @@ enum CloudRelay {
         try? await delete(path: "results/\(id).json")
         try? await delete(path: "results/\(id).error.txt")
 
-        if settings.sharePhotos {
-            for (i, photo) in photos.prefix(40).enumerated() {
-                guard let image = ImageCache.shared.full(for: photo.fileName),
-                      let jpeg = image.resized(maxPixel: 1280).jpegData(compressionQuality: 0.7) else { continue }
-                try await put(path: "jobs/\(id)/P\(i + 1).jpg", data: jpeg, message: "Lecture photo")
-            }
+        let uploadPhotos = settings.sharePhotos ? Array(photos.prefix(ClaudeRelay.maxPhotos)) : []
+        let total = uploadPhotos.count + 2
+        onProgress(0, total)
+        for (i, photo) in uploadPhotos.enumerated() {
+            // 1024 px is plenty for Claude to recognize a building and keeps uploads quick.
+            guard let image = ImageCache.shared.full(for: photo.fileName),
+                  let jpeg = image.resized(maxPixel: 1024).jpegData(compressionQuality: 0.7) else { continue }
+            try await put(path: "jobs/\(id)/P\(i + 1).jpg", data: jpeg, message: "Lecture photo")
+            onProgress(i + 1, total)
         }
         let prompt = ClaudeRelay.prompt(for: lecture, settings: settings, photosAttached: settings.sharePhotos)
         try await put(path: "jobs/\(id)/prompt.md", data: Data(prompt.utf8), message: "Lecture transcript")
+        onProgress(total - 1, total)
         // READY is uploaded last: it is what starts the GitHub Action.
         try await put(path: "jobs/\(id)/READY", data: Data(Date().ISO8601Format().utf8), message: "Lecture \(id) ready for Claude")
 
@@ -152,8 +158,12 @@ enum CloudRelay {
 
     private static func put(path: String, data: Data, message: String) async throws {
         var body: [String: Any] = ["message": message, "content": data.base64EncodedString()]
-        if let existing = try await get(path: path) { body["sha"] = existing.1 }
-        let (responseData, response) = try await URLSession.shared.data(for: request(path, method: "PUT", body: body))
+        var (responseData, response) = try await URLSession.shared.data(for: request(path, method: "PUT", body: body))
+        // 422: the file already exists (e.g. a class sent again) — retry with its sha to replace it.
+        if (response as? HTTPURLResponse)?.statusCode == 422, let existing = try await get(path: path) {
+            body["sha"] = existing.1
+            (responseData, response) = try await URLSession.shared.data(for: request(path, method: "PUT", body: body))
+        }
         try check((response as? HTTPURLResponse)?.statusCode ?? 0, responseData)
     }
 

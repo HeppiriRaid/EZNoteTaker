@@ -7,18 +7,19 @@ struct TranscriptTab: View {
     let lecture: Lecture
     @State private var player = LecturePlayer()
     @State private var query = ""
+    @State private var viewing: LecturePhoto?
 
     private enum Item: Identifiable {
         case building(Building)
         case marker(StopMarker)
-        case photo(LecturePhoto)
+        case stop([LecturePhoto])
         case text(TranscriptSegment)
 
         var id: String {
             switch self {
             case .building(let b): "b-\(b.id)"
             case .marker(let m): "m-\(m.time)-\(m.label)"
-            case .photo(let p): "p-\(p.id)"
+            case .stop(let photos): "p-\(photos.first?.id.uuidString ?? "")"
             case .text(let s): "t-\(s.start)-\(s.text.hashValue)"
             }
         }
@@ -39,7 +40,10 @@ struct TranscriptTab: View {
         if q.isEmpty {
             all += lecture.buildings.map { ($0.firstMentioned - 0.01, .building($0)) }
             all += lecture.markers.map { ($0.time - 0.005, .marker($0)) }
-            all += lecture.photos.map { ($0.takenAt, .photo($0)) }
+            // Each group of photos is a stop on the walk, shown where it happened in the transcript.
+            all += PhotoStops.group(lecture.photos).compactMap { stop in
+                stop.first.map { ($0.takenAt, .stop(stop)) }
+            }
         }
         return all.sorted { $0.0 < $1.0 }.map { Entry(time: $0.0, item: $0.1) }
     }
@@ -72,6 +76,9 @@ struct TranscriptTab: View {
             }
             .card()
         }
+        .fullScreenCover(item: $viewing) { photo in
+            PhotoViewer(photo: photo, buildings: lecture.sortedBuildings)
+        }
         .onAppear { if let url = lecture.audioURL { player.load(url) } }
         .onDisappear { player.stop() }
     }
@@ -90,17 +97,8 @@ struct TranscriptTab: View {
             Label(m.label.isEmpty ? "New stop" : "New stop: \(m.label)", systemImage: "mappin.and.ellipse")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Theme.brick)
-        case .photo(let p):
-            HStack(alignment: .bottom, spacing: 10) {
-                PhotoThumb(fileName: p.fileName, maxPixel: 500)
-                    .frame(width: 140, height: 105)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(TimeFormat.clock(p.takenAt)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                    if let b = p.building { Text(b.name).font(.caption.weight(.semibold)) }
-                    if !p.caption.isEmpty { Text(p.caption).font(.caption).foregroundStyle(.secondary) }
-                }
-            }
+        case .stop(let photos):
+            stopCard(photos)
         case .text(let s):
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Button {
@@ -117,6 +115,61 @@ struct TranscriptTab: View {
                     .textSelection(.enabled)
             }
         }
+    }
+
+    /// A stop on the walk: the photos taken there, the building they show, and what the professor
+    /// was saying at that moment.
+    private func stopCard(_ photos: [LecturePhoto]) -> some View {
+        let first = photos[0]
+        let building = photos.lazy.compactMap(\.building).first
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "mappin.and.ellipse").foregroundStyle(Theme.brick)
+                Text(building?.name ?? (first.liveHint.isEmpty ? "Stop" : first.liveHint))
+                    .font(.subheadline.weight(.bold))
+                Spacer()
+                Text(TimeFormat.clock(first.takenAt)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+            }
+            if let building {
+                Text("\(building.architectDisplay) · \(building.yearDisplay)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(photos) { photo in
+                        Button { viewing = photo } label: {
+                            PhotoThumb(fileName: photo.fileName, maxPixel: 500)
+                                .frame(width: photos.count == 1 ? 220 : 130, height: photos.count == 1 ? 160 : 100)
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            if let caption = photos.first(where: { !$0.caption.isEmpty })?.caption {
+                RichText(caption).font(.caption)
+            }
+            let said = spokenAround(first.takenAt)
+            if !said.isEmpty {
+                Text("“\(said)”")
+                    .font(.caption)
+                    .italic()
+                    .foregroundStyle(.secondary)
+                    .lineLimit(4)
+            }
+        }
+        .padding(12)
+        .background(Theme.brick.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    /// What the professor said right around a photo (a few seconds before to ~45 s after).
+    private func spokenAround(_ time: Double) -> String {
+        let text = lecture.sortedSegments
+            .filter { $0.start >= time - 10 && $0.start <= time + 45 }
+            .map(\.text)
+            .joined(separator: " ")
+        return text.count > 260 ? String(text.prefix(260)) + "…" : text
     }
 
     private func highlighted(_ text: String) -> Text {

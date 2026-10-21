@@ -276,3 +276,36 @@ final class StopMarker {
         self.label = label
     }
 }
+
+// MARK: - Photo stops
+
+/// Groups photos into "stops": the student takes a few photos of each building while the class stands
+/// in front of it, so photos close together in time and place belong to the same stop.
+enum PhotoStops {
+    /// A new stop starts after this many seconds without photos…
+    static let maxGap: Double = 150
+    /// …or when the student has walked further than this many meters.
+    static let maxDistance: Double = 40
+
+    static func group(_ photos: [LecturePhoto]) -> [[LecturePhoto]] {
+        var stops: [[LecturePhoto]] = []
+        for photo in photos.sorted(by: { $0.takenAt < $1.takenAt }) {
+            if let previous = stops.last?.last,
+               photo.takenAt - previous.takenAt <= maxGap,
+               distance(previous, photo).map({ $0 <= maxDistance }) ?? true {
+                stops[stops.count - 1].append(photo)
+            } else {
+                stops.append([photo])
+            }
+        }
+        return stops
+    }
+
+    private static func distance(_ a: LecturePhoto, _ b: LecturePhoto) -> Double? {
+        guard let la = a.latitude, let lo = a.longitude, let lb = b.latitude, let lob = b.longitude else { return nil }
+        let metersPerDegree = 111_320.0
+        let dx = (lob - lo) * metersPerDegree * cos(la * .pi / 180)
+        let dy = (lb - la) * metersPerDegree
+        return (dx * dx + dy * dy).squareRoot()
+    }
+}

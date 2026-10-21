@@ -212,20 +212,31 @@ struct LectureAnalysis: Decodable {
             if let photo = byUUID[uuid] { photoByPromptID["P\(i + 1)"] = photo }
         }
 
-        var placed = 0
+        /// Exact name first; Claude sometimes shortens or extends a name ("Rookery" vs "The Rookery Building").
+        func building(named name: String) -> Building? {
+            let key = Self.normalize(name)
+            guard !key.isEmpty else { return nil }
+            if let exact = created[key] { return exact }
+            return created.filter { $0.key.contains(key) || key.contains($0.key) }
+                .max { $0.key.count < $1.key.count }?.value
+        }
+
+        // Photos Claude placed, or deliberately left without a building.
+        var decided = Set<UUID>()
         for assignment in photoAssignments {
             let key = assignment.photoId.uppercased().replacingOccurrences(of: ".JPG", with: "")
             guard let photo = photoByPromptID[key] else { continue }
             if !assignment.caption.isEmpty { photo.caption = assignment.caption }
-            if !photo.manuallyAssigned {
-                photo.building = created[Self.normalize(assignment.buildingName)]
-                if photo.building != nil { placed += 1 }
+            guard !photo.manuallyAssigned else { continue }
+            let match = building(named: assignment.buildingName)
+            if match != nil || assignment.buildingName.trimmingCharacters(in: .whitespaces).isEmpty {
+                photo.building = match
+                decided.insert(photo.id)
             }
         }
         for (photo, name) in manualLinks {
             if let building = created[name] {
                 photo.building = building
-                placed += 1
             } else {
                 // The building the student picked no longer exists; let automatic matching take over.
                 photo.building = nil
@@ -233,14 +244,39 @@ struct LectureAnalysis: Decodable {
             }
         }
 
+        // Every other photo goes to the building another photo of the same stop shows,
+        // otherwise to the building being discussed when it was taken.
+        let byTime = created.values.sorted { $0.firstMentioned < $1.firstMentioned }
+        for stop in PhotoStops.group(lecture.photos) {
+            let stopBuilding = stop.lazy.compactMap { photo in photo.building.flatMap { kept.contains($0.id) ? $0 : nil } }.first
+            for photo in stop where !photo.manuallyAssigned && !decided.contains(photo.id) {
+                photo.building = stopBuilding
+                    ?? byTime.last { $0.firstMentioned <= photo.takenAt + 30 }
+                    ?? byTime.first
+            }
+        }
+        let placed = lecture.photos.filter { photo in photo.building.map { kept.contains($0.id) } ?? false }.count
+
         // Fix misheard proper nouns in the transcript.
+        // Whole words only, so "Burn up" → "Burnham" can't touch "burning", and explanations in
+        // parentheses ("Bundy Fountain (pun on …)") are not pasted into the transcript.
         var applied = 0
         for fix in nameCorrections {
             let heard = fix.heard.trimmingCharacters(in: .whitespaces)
-            guard heard.count >= 4, !fix.correct.isEmpty, heard.lowercased() != fix.correct.lowercased() else { continue }
-            for segment in lecture.segments where segment.text.range(of: heard, options: .caseInsensitive) != nil {
-                segment.text = segment.text.replacingOccurrences(of: heard, with: fix.correct, options: .caseInsensitive)
-                applied += 1
+            let correct = fix.correct
+                .replacingOccurrences(of: #"\s*\(.*\)"#, with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespaces)
+            guard heard.count >= 4, !correct.isEmpty, heard.lowercased() != correct.lowercased(),
+                  let regex = try? NSRegularExpression(
+                      pattern: "(?<![\\p{L}\\p{N}])" + NSRegularExpression.escapedPattern(for: heard) + "(?![\\p{L}\\p{N}])",
+                      options: [.caseInsensitive]) else { continue }
+            let template = NSRegularExpression.escapedTemplate(for: correct)
+            for segment in lecture.segments {
+                let range = NSRange(segment.text.startIndex..., in: segment.text)
+                let count = regex.numberOfMatches(in: segment.text, range: range)
+                guard count > 0 else { continue }
+                segment.text = regex.stringByReplacingMatches(in: segment.text, range: range, withTemplate: template)
+                applied += count
             }
         }
         lecture.correctionsApplied += applied

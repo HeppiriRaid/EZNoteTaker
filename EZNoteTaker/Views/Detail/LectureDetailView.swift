@@ -88,15 +88,20 @@ struct AnalysisStatusCard: View {
 
     var body: some View {
         if analysis.sending.contains(lecture.id) {
-            status(icon: "icloud.and.arrow.up", color: Theme.gold,
-                   title: "Sending this class to Claude…",
-                   detail: "Uploading the transcript and photos.") { EmptyView() }
-        } else if lecture.claudeJob == .waiting {
-            status(icon: "hourglass", color: Theme.gold,
-                   title: "Claude Opus 5.5 is writing your study notes",
-                   detail: waitingDetail) {
-                Button("Check now") { analysis.checkRelay(context: context, force: true) }
+            let upload = analysis.uploads[lecture.id]
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Sending this class to Claude…", systemImage: "icloud.and.arrow.up")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.gold)
+                ProgressView(value: Double(upload?.done ?? 0), total: Double(max(upload?.total ?? 1, 1)))
+                Text(upload.map { "Uploading \($0.done) of \($0.total) files. Keep the app open until this finishes." }
+                     ?? "Preparing the transcript and photos…")
+                    .font(.caption).foregroundStyle(.secondary)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .card()
+        } else if lecture.claudeJob == .waiting {
+            ClaudeWaitingCard(lecture: lecture, heartbeat: analysis.relayHeartbeat)
         } else if let progress = analysis.drafting[lecture.id] {
             VStack(alignment: .leading, spacing: 8) {
                 Label("Writing an instant on-device draft…", systemImage: "sparkles")
@@ -136,16 +141,6 @@ struct AnalysisStatusCard: View {
         }
     }
 
-    private var waitingDetail: String {
-        var text = "This happens automatically"
-        if let sent = lecture.claudeJobSentAt { text += " — sent \(sent.formatted(.relative(presentation: .named)))" }
-        if let beat = analysis.relayHeartbeat {
-            text += ". Relay last active \(beat.formatted(.relative(presentation: .named)))."
-        } else {
-            text += "."
-        }
-        return text
-    }
 
     private func status<Actions: View>(icon: String, color: Color, title: String, detail: String,
                                        @ViewBuilder actions: () -> Actions) -> some View {
@@ -158,6 +153,50 @@ struct AnalysisStatusCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card()
+    }
+}
+
+/// Shown while Claude works on the class. It updates by itself: the app checks for the result every
+/// minute and imports it automatically, so there is nothing to tap.
+struct ClaudeWaitingCard: View {
+    let lecture: Lecture
+    let heartbeat: Date?
+
+    /// Rough duration from real classes: ~10 minutes for a 1 h 45 min walk with ~40 photos.
+    private var expectedSeconds: Double {
+        max(180, 60 + Double(lecture.photos.count) * 8 + lecture.durationSeconds * 0.05)
+    }
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 5)) { context in
+            let started = lecture.claudeJobSentAt ?? context.date
+            let elapsed = context.date.timeIntervalSince(started)
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Claude Opus 5.5 is writing your study notes", systemImage: "sparkles")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.gold)
+                ProgressView(value: min(elapsed / expectedSeconds, 0.95))
+                    .tint(Theme.gold)
+                Text(statusText(elapsed: elapsed))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .card()
+        }
+    }
+
+    private func statusText(elapsed: Double) -> String {
+        let minutes = Int(elapsed / 60)
+        let expected = Int((expectedSeconds / 60).rounded())
+        var text = elapsed < expectedSeconds
+            ? "\(minutes) of about \(expected) min. "
+            : "Taking a little longer than usual (\(minutes) min). "
+        text += "The notes appear here automatically — you can leave this screen or close the app."
+        if let heartbeat, Date().timeIntervalSince(heartbeat) > 900 {
+            text += " Your Mac relay hasn't checked in since \(heartbeat.formatted(date: .omitted, time: .shortened)) — is the Mac on?"
+        }
+        return text
     }
 }
 

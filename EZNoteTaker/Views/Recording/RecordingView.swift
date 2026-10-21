@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The live class screen: timer, live transcript, inline camera, "new stop" markers and the
-/// on-device "now discussing" guess. Designed for one-handed use while walking.
+/// The live class screen: timer, live transcript, inline camera and the on-device "now discussing"
+/// guess. Every photo marks a stop in the transcript. Designed for one-handed use while walking.
 struct RecordingView: View {
     @Environment(RecordingSession.self) private var recorder
     @Environment(AppSettings.self) private var settings
@@ -11,9 +11,11 @@ struct RecordingView: View {
     @State private var camera = CameraController()
     @State private var cameraOpen = false
     @State private var cameraDenied = false
-    @State private var flash = false
-    @State private var showStopMarker = false
-    @State private var markerName = ""
+    @State private var shutterBlink = false
+    @State private var zoom: CGFloat = 1
+    @State private var pinchStartZoom: CGFloat = 1
+    @State private var zoomRange = CameraController.ZoomRange()
+    @State private var focusPoint: CGPoint?
     @State private var confirmFinish = false
     @State private var confirmDiscard = false
     @State private var followTranscript = true
@@ -31,9 +33,6 @@ struct RecordingView: View {
             default:
                 live
             }
-            if flash {
-                Color.white.ignoresSafeArea().transition(.opacity)
-            }
         }
         .preferredColorScheme(.dark)
         .task {
@@ -42,16 +41,6 @@ struct RecordingView: View {
             }
         }
         .onDisappear { camera.stop() }
-        .alert("New stop", isPresented: $showStopMarker) {
-            TextField("Building name (optional)", text: $markerName)
-            Button("Add Stop") {
-                recorder.addMarker(label: markerName)
-                markerName = ""
-            }
-            Button("Cancel", role: .cancel) { markerName = "" }
-        } message: {
-            Text("Marks the moment you arrive at a new building. It helps place the transcript and photos.")
-        }
         .confirmationDialog("Finish this class?", isPresented: $confirmFinish, titleVisibility: .visible) {
             Button("Finish & Make Study Notes") { finish() }
             Button("Keep Recording", role: .cancel) {}
@@ -133,58 +122,117 @@ struct RecordingView: View {
     }
 
     private func nowDiscussing(_ guess: LiveBuildingGuess) -> some View {
-        Button {
-            recorder.addMarker(label: guess.name)
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "building.columns.fill")
-                    .font(.title3)
-                    .foregroundStyle(Theme.brick)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("NOW DISCUSSING").font(.caption2.weight(.heavy)).foregroundStyle(.white.opacity(0.6))
-                    Text(guess.label).font(.subheadline.weight(.semibold)).lineLimit(2)
-                }
-                Spacer()
-                Image(systemName: "mappin.and.ellipse").foregroundStyle(.white.opacity(0.6))
+        HStack(spacing: 10) {
+            Image(systemName: "building.columns.fill")
+                .font(.title3)
+                .foregroundStyle(Theme.brick)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("NOW DISCUSSING").font(.caption2.weight(.heavy)).foregroundStyle(.white.opacity(0.6))
+                Text(guess.label).font(.subheadline.weight(.semibold)).lineLimit(2)
             }
-            .padding(12)
-            .background(.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            Spacer()
         }
-        .buttonStyle(.plain)
+        .padding(12)
+        .background(.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .padding(.horizontal)
         .transition(.move(edge: .top).combined(with: .opacity))
         .animation(.spring, value: guess)
-        .accessibilityHint("Adds a stop marker for this building")
     }
 
     private var cameraPanel: some View {
-        ZStack(alignment: .bottom) {
-            CameraPreview(session: camera.session)
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            HStack {
-                Button {
-                    closeCamera()
-                } label: {
-                    Image(systemName: "chevron.down")
-                        .font(.headline)
-                        .frame(width: 40, height: 40)
-                        .background(.black.opacity(0.5), in: Circle())
+        ZStack {
+            CameraPreview(session: camera.session, onTap: { devicePoint, viewPoint in
+                camera.focus(at: devicePoint)
+                Haptics.light()
+                withAnimation(.easeOut(duration: 0.15)) { focusPoint = viewPoint }
+                Task {
+                    try? await Task.sleep(for: .seconds(1))
+                    withAnimation { focusPoint = nil }
+                }
+            }, onPinch: { scale, began in
+                if began { pinchStartZoom = zoom }
+                zoom = min(max(pinchStartZoom * scale, zoomRange.min), zoomRange.max)
+                camera.setZoom(zoom)
+            })
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+
+            // Subtle shutter feedback on the preview only (no full-screen flash).
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(.black)
+                .opacity(shutterBlink ? 0.55 : 0)
+                .allowsHitTesting(false)
+
+            if let focusPoint {
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(Color.yellow, lineWidth: 1.5)
+                    .frame(width: 70, height: 70)
+                    .position(focusPoint)
+                    .allowsHitTesting(false)
+                    .transition(.scale(scale: 1.4).combined(with: .opacity))
+            }
+
+            VStack {
+                HStack {
+                    Button {
+                        closeCamera()
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.headline)
+                            .frame(width: 40, height: 40)
+                            .background(.black.opacity(0.5), in: Circle())
+                    }
+                    Spacer()
+                    if let last = recorder.recentPhotos.first {
+                        PhotoThumb(fileName: last.fileName, maxPixel: 200)
+                            .frame(width: 44, height: 44)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white, lineWidth: 2))
+                            .id(last.id)
+                            .transition(.scale)
+                    }
                 }
                 Spacer()
-                if let last = recorder.recentPhotos.first {
-                    PhotoThumb(fileName: last.fileName, maxPixel: 200)
-                        .frame(width: 44, height: 44)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white, lineWidth: 2))
-                        .id(last.id)
-                        .transition(.scale)
-                }
+                zoomBar
             }
             .padding(12)
         }
-        .frame(height: 300)
+        .frame(height: 320)
         .padding(.horizontal)
-        .onTapGesture(count: 2) { takePhoto() }
+    }
+
+    /// 0.5× / 1× / 2× / 5× buttons like the Camera app; shows the exact zoom while pinching.
+    private var zoomBar: some View {
+        HStack(spacing: 6) {
+            ForEach(zoomRange.presets, id: \.self) { preset in
+                let active = isActivePreset(preset)
+                Button {
+                    zoom = preset
+                    camera.setZoom(preset, animated: true)
+                    Haptics.light()
+                } label: {
+                    Text(active ? zoomLabel(zoom) + "×" : zoomLabel(preset))
+                        .font(.system(size: active ? 13 : 11, weight: .bold).monospacedDigit())
+                        .foregroundStyle(active ? Color.yellow : .white)
+                        .frame(width: active ? 40 : 32, height: active ? 40 : 32)
+                        .background(.black.opacity(0.55), in: Circle())
+                }
+            }
+        }
+        .padding(4)
+        .background(.black.opacity(0.25), in: Capsule())
+        .animation(.snappy, value: zoom)
+    }
+
+    private func isActivePreset(_ preset: CGFloat) -> Bool {
+        // The preset closest to (and not above) the current zoom is highlighted.
+        let candidates = zoomRange.presets.filter { $0 <= zoom + 0.01 }
+        return preset == (candidates.max() ?? zoomRange.presets.first)
+    }
+
+    private func zoomLabel(_ value: CGFloat) -> String {
+        if value < 1 { return String(format: ".%d", Int((value * 10).rounded())) }   // 0.5 → ".5"
+        if value.truncatingRemainder(dividingBy: 1) > 0.05 { return String(format: "%.1f", value) }
+        return String(Int(value.rounded()))
     }
 
     private var photoStrip: some View {
@@ -211,6 +259,9 @@ struct RecordingView: View {
                             .padding(.top, 20)
                     }
                     ForEach(recorder.lines) { line in
+                        if let file = line.photoFile {
+                            photoStop(line, file: file)
+                        } else {
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
                             Text(TimeFormat.clock(line.start))
                                 .font(.caption.monospacedDigit())
@@ -219,6 +270,7 @@ struct RecordingView: View {
                             Text(line.text)
                                 .font(.body)
                                 .foregroundStyle(line.text.hasPrefix("📍") ? Theme.brick : .white)
+                        }
                         }
                     }
                     if !recorder.volatileText.isEmpty {
@@ -258,10 +310,34 @@ struct RecordingView: View {
         }
     }
 
+    /// A photo in the live transcript: it marks the stop where the class is looking at a building.
+    private func photoStop(_ line: RecordingSession.LiveLine, file: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(TimeFormat.clock(line.start))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.white.opacity(0.4))
+                .frame(width: 44, alignment: .trailing)
+            PhotoThumb(fileName: file, maxPixel: 300)
+                .frame(width: 84, height: 64)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            VStack(alignment: .leading, spacing: 3) {
+                Label("Stop", systemImage: "mappin.and.ellipse")
+                    .font(.caption.weight(.heavy))
+                    .foregroundStyle(Theme.brick)
+                Text(line.text)
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.75))
+                    .lineLimit(3)
+            }
+        }
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
     private var controls: some View {
         HStack(alignment: .center) {
-            ControlButton(title: "New Stop", systemImage: "mappin.and.ellipse") {
-                showStopMarker = true
+            ControlButton(title: cameraOpen ? "Hide Camera" : "Camera",
+                          systemImage: cameraOpen ? "camera.badge.ellipsis" : "camera") {
+                if cameraOpen { closeCamera() } else { openCamera() }
             }
             ControlButton(title: recorder.phase == .paused ? "Resume" : "Pause",
                           systemImage: recorder.phase == .paused ? "play.fill" : "pause.fill") {
@@ -330,7 +406,11 @@ struct RecordingView: View {
                 cameraDenied = true
                 return
             }
-            camera.start()
+            camera.start { range in
+                zoomRange = range
+                zoom = min(max(zoom, range.min), range.max)
+                camera.setZoom(zoom)
+            }
             withAnimation(.spring) { cameraOpen = true }
         }
     }
@@ -341,9 +421,9 @@ struct RecordingView: View {
     }
 
     private func takePhoto() {
-        withAnimation(.easeOut(duration: 0.08)) { flash = true }
+        withAnimation(.easeOut(duration: 0.05)) { shutterBlink = true }
         camera.capture { image in
-            withAnimation(.easeIn(duration: 0.25)) { flash = false }
+            withAnimation(.easeIn(duration: 0.2)) { shutterBlink = false }
             if let image {
                 withAnimation(.spring) { recorder.addPhoto(image) }
             }

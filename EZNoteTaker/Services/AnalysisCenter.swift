@@ -24,6 +24,8 @@ final class AnalysisCenter {
     func isDrafting(_ lecture: Lecture) -> Bool { drafting[lecture.id] != nil }
 
     private(set) var sending: Set<UUID> = []
+    /// Upload progress while sending a class to the cloud relay.
+    private(set) var uploads: [UUID: Progress] = [:]
     private var lastCloudPoll = Date.distantPast
 
     static var relayConfigured: Bool { CloudRelay.isConfigured || ClaudeRelay.isConfigured }
@@ -47,7 +49,9 @@ final class AnalysisCenter {
         Task {
             do {
                 if CloudRelay.isConfigured {
-                    try await CloudRelay.submit(lecture, settings: AppSettings.shared)
+                    try await CloudRelay.submit(lecture, settings: AppSettings.shared) { done, total in
+                        AnalysisCenter.shared.uploads[lecture.id] = Progress(done: done, total: total)
+                    }
                 } else {
                     try ClaudeRelay.submit(lecture, settings: AppSettings.shared)
                 }
@@ -57,6 +61,7 @@ final class AnalysisCenter {
             }
             try? context.save()
             sending.remove(lecture.id)
+            uploads[lecture.id] = nil
             if bgTask != .invalid { UIApplication.shared.endBackgroundTask(bgTask) }
         }
     }

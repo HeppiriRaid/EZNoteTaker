@@ -22,6 +22,8 @@ final class RecordingSession {
         let id = UUID()
         let start: Double
         let text: String
+        /// Set for photo stops shown inline in the live transcript.
+        var photoFile: String? = nil
     }
 
     private(set) var phase: Phase = .idle
@@ -44,7 +46,6 @@ final class RecordingSession {
     private var detectionTask: Task<Void, Never>?
     private var lastSave = Date()
     private var interruptionObserver: NSObjectProtocol?
-    private var pausedByInterruption = false
 
     var isActive: Bool {
         switch phase {
@@ -137,7 +138,9 @@ final class RecordingSession {
     }
 
     private func tick() {
-        elapsed = audio.capturedSeconds
+        elapsed = audio.activeSeconds
+        // Keep recording no matter what (camera, notifications, calls): only the Pause button stops it.
+        if phase == .recording { audio.ensureRunning() }
         lecture?.durationSeconds = elapsed
         if Date().timeIntervalSince(lastSave) > 20 {
             try? context?.save()
@@ -199,6 +202,10 @@ final class RecordingSession {
             try? context.save()
             photoCount += 1
             recentPhotos.insert(photo, at: 0)
+            // The photo marks a stop in the live transcript, with what was being discussed.
+            let about = currentGuess.map { "Now discussing: \($0.label)" }
+                ?? "“…\(recentTranscript(characters: 140).trimmingCharacters(in: .whitespaces))”"
+            lines.append(LiveLine(start: elapsed, text: about, photoFile: name))
             if recentPhotos.count > 8 { recentPhotos.removeLast() }
             Haptics.tap()
         } catch {
@@ -227,7 +234,7 @@ final class RecordingSession {
             audio.setPaused(true)
             phase = .paused
         case .paused:
-            audio.resumeAfterInterruption()
+            audio.ensureRunning()
             audio.setPaused(false)
             phase = .recording
         default:
@@ -300,32 +307,18 @@ final class RecordingSession {
         levelHistory = Array(repeating: 0, count: 40)
     }
 
-    /// Phone calls, Siri etc. interrupt the microphone; pause and resume automatically.
+    /// Phone calls, Siri etc. can cut off the microphone. The recording keeps going (only the Pause
+    /// button pauses it); the microphone is reconnected as soon as the interruption ends, and the
+    /// gap is filled with silence so the timeline stays correct.
     private func observeInterruptions() {
         interruptionObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification, object: nil, queue: .main
         ) { [weak self] note in
             guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
-                  let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+                  AVAudioSession.InterruptionType(rawValue: raw) == .ended else { return }
             Task { @MainActor in
-                guard let self else { return }
-                switch type {
-                case .began:
-                    if self.phase == .recording {
-                        self.audio.setPaused(true)
-                        self.phase = .paused
-                        self.pausedByInterruption = true
-                    }
-                case .ended:
-                    if self.phase == .paused, self.pausedByInterruption {
-                        self.pausedByInterruption = false
-                        self.audio.resumeAfterInterruption()
-                        self.audio.setPaused(false)
-                        self.phase = .recording
-                    }
-                @unknown default:
-                    break
-                }
+                guard let self, self.phase == .recording else { return }
+                self.audio.ensureRunning()
             }
         }
     }

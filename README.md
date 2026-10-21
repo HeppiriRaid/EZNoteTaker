@@ -35,8 +35,9 @@ when it's ready.
   It falls back to `SFSpeechRecognizer` when needed.
 - The audio is saved, so you can tap any timestamp in the transcript to re-listen
   (0.75×–2× speed).
-- Inline camera: tap the shutter (or double-tap the preview) and keep recording.
-- **New Stop** button marks "we just arrived at a building", with GPS.
+- Inline camera that never stops the recording: pinch or tap 0.5×/1×/2×/5× to zoom, tap to focus.
+- Every photo marks a stop in the transcript, with GPS and what the professor was saying at that
+  moment. After Claude's pass, each photo sits on its building's cheat-sheet card.
 - **Now discussing…** banner: Apple Intelligence guesses the current building every ~40 s.
   Photos get tagged with that guess.
 - Keeps recording with the screen locked, pauses for phone calls and resumes afterward,
@@ -158,8 +159,8 @@ permitted"), either give `/bin/bash` Full Disk Access, or run
 ## Using it in class
 
 1. Tap **Record Class** when the tour starts.
-2. Walk and listen. When you reach a building, tap **New Stop** (optional) and take photos with
-   the big shutter button.
+2. Walk and listen. At each building, take a few photos with the big shutter button. The
+   recording keeps running, and the photos mark the stop.
 3. Tap **Finish**. The draft appears within a minute or two. Claude's version arrives a few
    minutes later and replaces it, and the app shows a banner when it's done.
 4. Before the final, use **Cheat Sheet** and **Study**.

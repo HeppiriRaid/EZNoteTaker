@@ -17,10 +17,22 @@ final class AudioCaptureEngine: @unchecked Sendable {
     private(set) var inputFormat: AVAudioFormat?
     /// Seconds of audio captured so far (pauses excluded) — the shared clock for transcript and photos.
     private(set) var capturedSeconds: Double = 0
+    private var activeAccumulated: Double = 0
+    private var activeSince: Date?
+    private var configObserver: NSObjectProtocol?
+
+    /// Wall-clock recording time, excluding the student's own pauses. Always moves forward while recording,
+    /// even if the microphone is briefly cut off; such gaps are filled with silence so the audio,
+    /// transcript and photo times stay in sync.
+    var activeSeconds: Double {
+        lock.lock(); defer { lock.unlock() }
+        return activeAccumulated + (activeSince.map { Date().timeIntervalSince($0) } ?? 0)
+    }
 
     static func configureSessionForRecording() throws {
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.record, mode: .default, options: [])
+        // playAndRecord + mixWithOthers: the camera and its shutter sound can't interrupt the recording.
+        try session.setCategory(.playAndRecord, mode: .default, options: [.mixWithOthers, .defaultToSpeaker])
         try session.setActive(true, options: [])
     }
 
@@ -44,12 +56,36 @@ final class AudioCaptureEngine: @unchecked Sendable {
         file = try AVAudioFile(forWriting: url, settings: settings,
                                commonFormat: format.commonFormat, interleaved: format.isInterleaved)
 
-        input.removeTap(onBus: 0)
-        input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
-            self?.handle(buffer)
-        }
+        installTap()
         engine.prepare()
         try engine.start()
+        lock.lock()
+        activeSince = Date()
+        lock.unlock()
+
+        // The engine stops itself when the audio hardware is reconfigured (e.g. by the camera); restart it.
+        configObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil
+        ) { [weak self] _ in
+            self?.ensureRunning()
+        }
+    }
+
+    private func installTap() {
+        let input = engine.inputNode
+        input.removeTap(onBus: 0)
+        input.installTap(onBus: 0, bufferSize: 4096, format: input.outputFormat(forBus: 0)) { [weak self] buffer, _ in
+            self?.handle(buffer)
+        }
+    }
+
+    /// Restarts the microphone if anything stopped it. Safe to call often.
+    func ensureRunning() {
+        guard !engine.isRunning, file != nil else { return }
+        try? Self.configureSessionForRecording()
+        installTap()
+        engine.prepare()
+        try? engine.start()
     }
 
     private func handle(_ buffer: AVAudioPCMBuffer) {
@@ -58,27 +94,51 @@ final class AudioCaptureEngine: @unchecked Sendable {
         lock.unlock()
         guard !paused else { return }
 
+        // If the microphone was cut off for a moment, fill the gap with silence.
+        let gap = activeSeconds - capturedSeconds
+        if gap > 1.5 { writeSilence(seconds: min(gap - 0.1, 3600), format: buffer.format) }
+
         try? file?.write(from: buffer)
         capturedSeconds += Double(buffer.frameLength) / buffer.format.sampleRate
         onLevel?(Self.level(of: buffer))
         onBuffer?(buffer)
     }
 
+    private func writeSilence(seconds: Double, format: AVAudioFormat) {
+        var remaining = AVAudioFrameCount(seconds * format.sampleRate)
+        let chunk = AVAudioFrameCount(format.sampleRate) // one second at a time
+        while remaining > 0 {
+            let frames = min(chunk, remaining)
+            guard let silence = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames) else { return }
+            silence.frameLength = frames
+            let buffers = UnsafeMutableAudioBufferListPointer(silence.mutableAudioBufferList)
+            for buffer in buffers {
+                if let data = buffer.mData { memset(data, 0, Int(buffer.mDataByteSize)) }
+            }
+            try? file?.write(from: silence)
+            capturedSeconds += Double(frames) / format.sampleRate
+            onBuffer?(silence)
+            remaining -= frames
+        }
+    }
+
     func setPaused(_ paused: Bool) {
         lock.lock()
         isPaused = paused
+        if paused {
+            activeAccumulated += activeSince.map { Date().timeIntervalSince($0) } ?? 0
+            activeSince = nil
+        } else if activeSince == nil {
+            activeSince = Date()
+        }
         lock.unlock()
         onLevel?(0)
     }
 
-    /// Restarts the engine after an interruption such as a phone call.
-    func resumeAfterInterruption() {
-        guard !engine.isRunning else { return }
-        try? Self.configureSessionForRecording()
-        try? engine.start()
-    }
-
     func stop() {
+        if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
+        configObserver = nil
+        setPaused(true)
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         file = nil // closes and finalizes the m4a

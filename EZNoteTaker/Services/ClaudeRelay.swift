@@ -16,6 +16,8 @@ import UIKit
 @MainActor
 enum ClaudeRelay {
     private static let bookmarkKey = "relayFolderBookmark"
+    /// A typical class has ~40 photos; leave plenty of headroom.
+    static let maxPhotos = 80
 
     // MARK: Folder
 
@@ -99,9 +101,9 @@ enum ClaudeRelay {
             lecture.promptPhotoOrder = photos.map { $0.id.uuidString }
 
             if settings.sharePhotos {
-                for (i, photo) in photos.prefix(40).enumerated() {
+                for (i, photo) in photos.prefix(maxPhotos).enumerated() {
                     guard let image = ImageCache.shared.full(for: photo.fileName),
-                          let jpeg = image.resized(maxPixel: 1280).jpegData(compressionQuality: 0.7) else { continue }
+                          let jpeg = image.resized(maxPixel: 1024).jpegData(compressionQuality: 0.7) else { continue }
                     try jpeg.write(to: job.appendingPathComponent("P\(i + 1).jpg"))
                 }
             }
@@ -218,14 +220,35 @@ enum ClaudeRelay {
         }
 
         if !photos.isEmpty {
-            text += "\nPhotos I took during class"
-            text += photosAttached ? " (the image files P1.jpg, P2.jpg… are in the current folder — look at them with the Read tool to confirm which building each shows)" : ""
-            text += ". Match each photo to the building it shows / that was being discussed at that moment:\n"
-            for (i, p) in photos.enumerated() {
-                var line = "- P\(i + 1) at [\(TimeFormat.clock(p.takenAt))]"
-                if let la = p.latitude, let lo = p.longitude { line += String(format: ", GPS %.5f, %.5f", la, lo) }
-                if !p.liveHint.isEmpty { line += ", live guess at the time: \(p.liveHint)" }
-                if p.manuallyAssigned, let b = p.building { line += ", I labeled it: \(b.name)" }
+            let number = Dictionary(photos.enumerated().map { ($1.id, $0 + 1) }, uniquingKeysWith: { a, _ in a })
+            text += """
+
+            ## Photos
+            I photograph each building while the class stands in front of it, so every photo marks a stop on the walk: \
+            at the photo's time the professor is usually talking about the building in the photo (read the transcript \
+            around that time). Photos are grouped below into stops by time and GPS; photos in one stop usually show the \
+            same building, or details and neighbours of it.
+            """
+            if photosAttached {
+                text += " The images are in the current folder as P1.jpg, P2.jpg… — look at each one with the Read tool before assigning it."
+            }
+            text += """
+
+            Assign EVERY photo to the building it shows, using the exact name from "buildings". Photos of artworks, \
+            rooms, windows or details inside or on a building belong to that building (e.g. a painting in a museum \
+            gallery → the museum building). Leave building_name empty only if a photo truly shows none of them.
+
+            """
+            for (n, stop) in PhotoStops.group(photos).enumerated() {
+                guard let first = stop.first else { continue }
+                let ids = stop.compactMap { number[$0.id].map { "P\($0)" } }
+                var line = "- Stop \(n + 1) at [\(TimeFormat.clock(first.takenAt))]: \(ids.joined(separator: ", "))"
+                if let la = first.latitude, let lo = first.longitude { line += String(format: " — GPS %.5f, %.5f", la, lo) }
+                if let guess = stop.first(where: { !$0.liveHint.isEmpty })?.liveHint { line += " — live guess: \(guess)" }
+                for p in stop where p.manuallyAssigned {
+                    if let b = p.building, let n = number[p.id] { line += " — I labeled P\(n): \(b.name)" }
+                }
+                if stop.count > 1, let last = stop.last { line += " (until [\(TimeFormat.clock(last.takenAt))])" }
                 text += line + "\n"
             }
         }
@@ -245,7 +268,8 @@ enum ClaudeRelay {
         \(jsonTemplate)
 
         Include every building we discussed (in the order visited), one photo_assignments entry per photo, \
-        and 8–15 exam_questions in the style of the final.
+        and 10–20 exam_questions in the style of the final. Classes are long walks (often 1½–2 hours, \
+        15–25 buildings), so keep each building's facts focused on what is likely to be tested.
         """
         return text
     }
@@ -279,8 +303,8 @@ enum ClaudeRelay {
           "longitude": -87.6359
         }
       ],
-      "photo_assignments": [ { "photo_id": "P1", "building_name": "Exact name from buildings, or empty", "caption": "What the photo shows" } ],
-      "name_corrections": [ { "heard": "Misheard proper noun exactly as in the transcript", "correct": "Correct spelling" } ]
+      "photo_assignments": [ { "photo_id": "P1", "building_name": "Exact name from buildings", "caption": "1–2 sentences: what the photo shows and what the professor was explaining at that moment" } ],
+      "name_corrections": [ { "heard": "Misheard proper noun exactly as in the transcript (never an ordinary English word)", "correct": "Just the correct spelling, no explanation" } ]
     }
     """
 
