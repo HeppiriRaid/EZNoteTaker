@@ -35,6 +35,11 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           MODEL: claude-opus-5-5
         run: |
+          if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+            # Leave the jobs queued; they are processed on the next run once the secret exists.
+            echo "::error::Missing repository secret CLAUDE_CODE_OAUTH_TOKEN. Run 'claude setup-token' and add it under Settings > Secrets and variables > Actions, then re-run this workflow."
+            exit 1
+          fi
           mkdir -p results
           for job in jobs/*/; do
             [ -d "$job" ] || continue
