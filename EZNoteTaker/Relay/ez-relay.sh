@@ -66,7 +66,7 @@ run_jobs() {
       cd "$job" || exit 1
       "$CLAUDE_BIN" -p "Read prompt.md in the current folder and follow its instructions exactly. Your final reply must be only the JSON object it asks for." \
         --model "$MODEL" \
-        --allowedTools "Read" \
+        --allowedTools "Read,WebSearch,WebFetch" \
         --output-format text
     ) > "$out" 2> "$err"
     status=$?

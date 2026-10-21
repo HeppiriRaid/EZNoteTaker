@@ -180,11 +180,11 @@ struct FlashcardsView: View {
 
     private func front(_ b: Building) -> some View {
         VStack(spacing: 14) {
-            let photos = b.sortedPhotos
-            // Stable while the card is shown, but rotates between study rounds.
-            if !photos.isEmpty {
-                let photo = photos[(b.studyCorrect + b.studyMissed) % photos.count]
-                PhotoThumb(fileName: photo.fileName, maxPixel: 1000)
+            // The student's photos (rotating between rounds, stable while shown), else the reference photo.
+            let files = b.sortedPhotos.map(\.fileName) + (b.photos.isEmpty && !b.referenceImageFile.isEmpty ? [b.referenceImageFile] : [])
+            if !files.isEmpty {
+                let file = files[(b.studyCorrect + b.studyMissed) % files.count]
+                PhotoThumb(fileName: file, maxPixel: 1000)
                     .frame(height: 300)
                     .frame(maxWidth: .infinity)
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -336,7 +336,7 @@ struct QuizView: View {
             var kinds: [Int] = []
             if !b.architect.isEmpty { kinds.append(0) }
             if !b.yearBuilt.isEmpty { kinds.append(1) }
-            if !b.photos.isEmpty { kinds.append(2) }
+            if b.displayImage != nil { kinds.append(2) }
             if !b.architect.isEmpty { kinds.append(3) }
             guard let kind = kinds.randomElement() else { continue }
 
@@ -348,7 +348,7 @@ struct QuizView: View {
                                    others: all.map(\.yearBuilt) + Self.nearbyYears(b.yearSort)))
             case 2:
                 result.append(make(b, "Which building is this?", answer: b.name, others: all.map(\.name),
-                                   photo: b.sortedPhotos.randomElement()?.fileName))
+                                   photo: b.sortedPhotos.randomElement()?.fileName ?? b.displayImage?.fileName))
             default:
                 result.append(make(b, "Which building was designed by \(b.architect)?", answer: b.name,
                                    others: all.filter { $0.architect != b.architect }.map(\.name)))

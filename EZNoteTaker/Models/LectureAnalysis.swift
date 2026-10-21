@@ -12,12 +12,14 @@ struct LectureAnalysis: Decodable {
         var firstMentionedSeconds: Double?
         var latitude: Double?
         var longitude: Double?
+        var wikipediaTitle = "", referenceImageUrl = ""
 
         init(name: String) { self.name = name }
 
         enum CodingKeys: String, CodingKey {
             case name, architect, yearBuilt, style, location, significance, verificationNote, examImportance
             case keyFacts, trivia, professorEmphasis, yearSort, firstMentionedSeconds, latitude, longitude
+            case wikipediaTitle, referenceImageUrl
         }
 
         init(from decoder: Decoder) throws {
@@ -35,6 +37,8 @@ struct LectureAnalysis: Decodable {
             professorEmphasis = c.strings(.professorEmphasis)
             yearSort = c.number(.yearSort).map { Int($0) }
             firstMentionedSeconds = c.number(.firstMentionedSeconds)
+            wikipediaTitle = c.string(.wikipediaTitle)
+            referenceImageUrl = c.string(.referenceImageUrl)
             latitude = c.number(.latitude)
             longitude = c.number(.longitude)
         }
@@ -198,6 +202,12 @@ struct LectureAnalysis: Decodable {
             b.firstMentioned = info.firstMentionedSeconds ?? 0
             b.latitude = info.latitude
             b.longitude = info.longitude
+            if b.wikipediaTitle != info.wikipediaTitle || b.referenceImageURL != info.referenceImageUrl {
+                // A different article or image: fetch the reference photo again.
+                b.wikipediaTitle = info.wikipediaTitle
+                b.referenceImageURL = info.referenceImageUrl
+                b.referenceImageFile = ""
+            }
             b.order = index
             created[key] = b
         }

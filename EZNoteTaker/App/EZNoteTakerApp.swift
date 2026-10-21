@@ -115,9 +115,12 @@ struct RootView: View {
             }
         }
         // Make sure every photo of an analyzed class sits on a building card.
-        for lecture in (try? context.fetch(FetchDescriptor<Lecture>())) ?? [] where !lecture.buildings.isEmpty {
+        let all = (try? context.fetch(FetchDescriptor<Lecture>())) ?? []
+        for lecture in all where !lecture.buildings.isEmpty {
             PhotoPlacement.fillGaps(in: lecture)
         }
         try? context.save()
+        // Reference photos for buildings without the student's own photos.
+        ReferenceImages.fetchMissing(in: all, context: context)
     }
 }

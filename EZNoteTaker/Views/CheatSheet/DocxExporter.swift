@@ -58,6 +58,10 @@ enum DocxExporter {
                 if !building.style.isEmpty { paragraph("Style: \(building.style)") }
                 if !building.location.isEmpty { paragraph("Location: \(building.location)") }
                 for photo in building.sortedPhotos.prefix(2) { image(photo.fileName) }
+                if building.photos.isEmpty, !building.referenceImageFile.isEmpty {
+                    image(building.referenceImageFile)
+                    paragraph(building.referenceImageCredit, italic: true, color: "777777")
+                }
                 if !building.significance.isEmpty { paragraph(building.significance) }
                 if !building.keyFacts.isEmpty {
                     paragraph("Key facts", bold: true, color: "B8583C")

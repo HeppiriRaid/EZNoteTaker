@@ -350,8 +350,11 @@ struct BuildingThumb: View {
     let building: Building
 
     var body: some View {
-        if let photo = building.sortedPhotos.first {
-            PhotoThumb(fileName: photo.fileName, maxPixel: 240)
+        if let image = building.displayImage {
+            PhotoThumb(fileName: image.fileName, maxPixel: 240)
+                .overlay(alignment: .bottomTrailing) {
+                    if image.isReference { ReferenceBadge() }
+                }
         } else {
             Rectangle()
                 .fill(Theme.brick.opacity(0.12))
@@ -399,6 +402,12 @@ struct CheatCard: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 12) {
                 let photos = building.sortedPhotos
+                if photos.isEmpty, let image = building.displayImage {
+                    PhotoThumb(fileName: image.fileName, maxPixel: 400)
+                        .frame(width: 96, height: 96)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(alignment: .bottomTrailing) { ReferenceBadge().padding(4) }
+                }
                 if let first = photos.first {
                     PhotoThumb(fileName: first.fileName, maxPixel: 400)
                         .frame(width: 96, height: 96)
@@ -506,4 +515,17 @@ struct ShareSheet: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
+}
+
+/// Marks a reference photo from the web (the student didn't take it).
+struct ReferenceBadge: View {
+    var body: some View {
+        Image(systemName: "globe")
+            .font(.system(size: 9, weight: .bold))
+            .foregroundStyle(.white)
+            .padding(3)
+            .background(.black.opacity(0.6), in: Circle())
+            .padding(2)
+            .accessibilityLabel("Reference photo from the web")
+    }
 }

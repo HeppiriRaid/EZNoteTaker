@@ -20,7 +20,8 @@ enum ClaudeRelay {
     static let maxPhotos = 80
     /// Bump when the instructions to Claude change in a way worth re-running old classes for.
     /// 1: first release · 2: photo stops, captions, every photo assigned, whole-word corrections.
-    static let promptVersion = 2
+    /// 3: Wikipedia article / reference photo for each building.
+    static let promptVersion = 3
 
     // MARK: Folder
 
@@ -274,6 +275,11 @@ enum ClaudeRelay {
         Include every building we discussed (in the order visited), one photo_assignments entry per photo, \
         and 10–20 exam_questions in the style of the final. Classes are long walks (often 1½–2 hours, \
         15–25 buildings), so keep each building's facts focused on what is likely to be tested.
+
+        For every building, give its exact English Wikipedia article title in wikipedia_title (check with web \
+        search when unsure). Only for buildings that have no Wikipedia article, use web search to find a real, \
+        freely licensed photo (Wikimedia Commons preferred) and put its direct image link in reference_image_url. \
+        Never guess or invent a link; leave it empty if you can't find one.
         """
         return text
     }
@@ -303,6 +309,8 @@ enum ClaudeRelay {
           "verification_note": "Differences from commonly cited facts, or which fields you filled in; empty if none",
           "exam_importance": "high | medium | low",
           "first_mentioned_seconds": 754,
+          "wikipedia_title": "Exact title of the building's English Wikipedia article, or empty if it has none",
+          "reference_image_url": "Only if wikipedia_title is empty: direct https link to a freely licensed photo of the building found with web search (prefer upload.wikimedia.org), else empty",
           "latitude": 41.8789,
           "longitude": -87.6359
         }

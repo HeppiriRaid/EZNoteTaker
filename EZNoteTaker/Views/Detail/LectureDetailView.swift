@@ -352,8 +352,11 @@ struct BuildingRow: View {
         HStack(spacing: 14) {
             ZStack(alignment: .topLeading) {
                 Group {
-                    if let photo = building.sortedPhotos.first {
-                        PhotoThumb(fileName: photo.fileName, maxPixel: 240)
+                    if let image = building.displayImage {
+                        PhotoThumb(fileName: image.fileName, maxPixel: 240)
+                            .overlay(alignment: .bottomTrailing) {
+                                if image.isReference { ReferenceBadge() }
+                            }
                     } else {
                         Rectangle().fill(Theme.brick.opacity(0.12))
                             .overlay(Image(systemName: "building.columns").font(.title2).foregroundStyle(Theme.brick))

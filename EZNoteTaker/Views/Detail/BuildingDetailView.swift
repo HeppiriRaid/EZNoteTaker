@@ -111,7 +111,23 @@ struct BuildingDetailView: View {
     @ViewBuilder
     private var photoCarousel: some View {
         let photos = building.sortedPhotos
-        if photos.isEmpty {
+        if photos.isEmpty, !building.referenceImageFile.isEmpty {
+            // Reference photo from the web, clearly labeled as not the student's own.
+            PhotoThumb(fileName: building.referenceImageFile, maxPixel: 1400)
+                .frame(maxWidth: .infinity)
+                .frame(height: 280)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .overlay(alignment: .bottomLeading) {
+                    Label(building.referenceImageCredit.isEmpty ? "Reference photo" : building.referenceImageCredit,
+                          systemImage: "globe")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 8).padding(.vertical, 5)
+                        .background(.black.opacity(0.6), in: Capsule())
+                        .padding(10)
+                }
+        } else if photos.isEmpty {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(Theme.brick.opacity(0.1))
                 .frame(height: 160)

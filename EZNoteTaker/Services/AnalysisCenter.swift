@@ -126,7 +126,7 @@ final class AnalysisCenter {
             lastCloudPoll = Date()
             Task {
                 for lecture in waiting {
-                    handle(await CloudRelay.collect(lecture, context: context), for: lecture)
+                    handle(await CloudRelay.collect(lecture, context: context), for: lecture, context: context)
                 }
                 try? context.save()
             }
@@ -135,14 +135,15 @@ final class AnalysisCenter {
 
         relayHeartbeat = ClaudeRelay.lastHeartbeat()
         for lecture in waiting {
-            handle(ClaudeRelay.collect(lecture, context: context), for: lecture)
+            handle(ClaudeRelay.collect(lecture, context: context), for: lecture, context: context)
         }
         try? context.save()
     }
 
-    private func handle(_ result: ClaudeRelay.CheckResult, for lecture: Lecture) {
+    private func handle(_ result: ClaudeRelay.CheckResult, for lecture: Lecture, context: ModelContext) {
         switch result {
         case .imported(let summary):
+            ReferenceImages.fetchMissing(in: [lecture], context: context)
             draftTasks[lecture.id]?.cancel()
             drafting[lecture.id] = nil
             toast = "Claude finished “\(lecture.displayTitle)” — \(summary.buildings) buildings, \(summary.photosPlaced) photos placed"

@@ -54,7 +54,7 @@ jobs:
             [ -f "$job/READY" ] || continue
             echo "Processing lecture $id"
             if (cd "$job" && claude -p "Read prompt.md in the current folder and follow its instructions exactly. Your final reply must be only the JSON object it asks for." \
-                  --model "$MODEL" --allowedTools "Read" --output-format text) > "results/$id.json.partial" 2> claude-stderr.txt \
+                  --model "$MODEL" --allowedTools "Read,WebSearch,WebFetch" --output-format text) > "results/$id.json.partial" 2> claude-stderr.txt \
                && grep -q '"buildings"' "results/$id.json.partial"; then
               mv "results/$id.json.partial" "results/$id.json"
             else
