@@ -127,6 +127,21 @@ Run the workflow again (or push a tag like `v1.1`) whenever you want an update.
 In the app's **Settings** tab, enter your course name, the city and any architect or building
 names the professor uses a lot.
 
+### Updating the app (your classes are kept)
+
+Install a new version the same way, from Xcode with **Run** (or with the nightly auto-refresh). Installing
+over the existing app keeps every recording, transcript, photo and note. To stay safe:
+
+- **Never delete the app** from the iPhone; that erases its data.
+- Keep the same Apple ID team and `APP_BUNDLE_ID`. iOS treats a different one as a different app.
+- The app keeps a daily backup of its database in **Files › On My iPhone › EZNoteTaker › Backups**
+  (recordings and photos are in the same folder). If an update ever can't open your classes, it shows a
+  message instead of crashing and nothing is deleted.
+
+After an update that improves Claude's instructions, classes processed earlier show **Update with
+Claude**. **Settings › Update N classes to the latest style** re-runs them all, one after another.
+Recordings, transcripts and photos are never changed, and your stars, notes and photo choices are kept.
+
 ## 2. Connect Claude (one-time, pick one)
 
 ### Option A: Cloud (GitHub), no computer needs to stay on

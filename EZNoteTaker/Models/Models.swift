@@ -47,6 +47,8 @@ final class Lecture {
     var examQuestionsData: Data?
     var analyzedAt: Date?
     var correctionsApplied: Int = 0
+    /// Version of Claude's instructions that produced the current notes (see ClaudeRelay.promptVersion).
+    var analysisVersion: Int = 0
     /// Photo ids in the order they were labeled P1, P2… in the last Claude job.
     var promptPhotoOrder: [String] = []
 

@@ -36,34 +36,51 @@ final class AnalysisCenter {
         startDraft(lecture, context: context)
     }
 
+    /// Uploads run one at a time: GitHub rejects simultaneous commits to the same branch.
+    private var uploadQueue: Task<Void, Never>?
+
     /// Hands the lecture to Claude through the cloud (GitHub) relay if set up, otherwise the Mac relay.
     func sendToClaude(_ lecture: Lecture, context: ModelContext) {
         guard !sending.contains(lecture.id) else { return }
         sending.insert(lecture.id)
+        let previous = uploadQueue
+        uploadQueue = Task {
+            await previous?.value
+            await upload(lecture, context: context)
+        }
+    }
+
+    private func upload(_ lecture: Lecture, context: ModelContext) async {
         // Extra time to finish uploading if the phone is locked right after class.
-        var bgTask = UIBackgroundTaskIdentifier.invalid
-        bgTask = UIApplication.shared.beginBackgroundTask(withName: "Upload lecture") {
-            UIApplication.shared.endBackgroundTask(bgTask)
-            bgTask = .invalid
-        }
-        Task {
-            do {
-                if CloudRelay.isConfigured {
-                    try await CloudRelay.submit(lecture, settings: AppSettings.shared) { done, total in
-                        AnalysisCenter.shared.uploads[lecture.id] = Progress(done: done, total: total)
-                    }
-                } else {
-                    try ClaudeRelay.submit(lecture, settings: AppSettings.shared)
+        let background = BackgroundTask(name: "Upload lecture")
+        defer { background.end() }
+        do {
+            if CloudRelay.isConfigured {
+                try await CloudRelay.submit(lecture, settings: AppSettings.shared) { done, total in
+                    AnalysisCenter.shared.uploads[lecture.id] = Progress(done: done, total: total)
                 }
-            } catch {
-                lecture.claudeJob = .failed
-                lecture.claudeJobError = error.localizedDescription
+            } else {
+                try ClaudeRelay.submit(lecture, settings: AppSettings.shared)
             }
-            try? context.save()
-            sending.remove(lecture.id)
-            uploads[lecture.id] = nil
-            if bgTask != .invalid { UIApplication.shared.endBackgroundTask(bgTask) }
+        } catch {
+            lecture.claudeJob = .failed
+            lecture.claudeJobError = error.localizedDescription
         }
+        try? context.save()
+        sending.remove(lecture.id)
+        uploads[lecture.id] = nil
+    }
+
+    /// Classes whose Claude notes were made with older instructions than this version of the app.
+    func outdatedLectures(context: ModelContext) -> [Lecture] {
+        let lectures = (try? context.fetch(FetchDescriptor<Lecture>(sortBy: [SortDescriptor(\.date)]))) ?? []
+        return lectures.filter { $0.isOutdated }
+    }
+
+    /// Re-runs Claude on every outdated class, one after another. Notes, stars, study stats and
+    /// manual photo choices are kept; the recording, transcript and photos are never touched.
+    func updateAll(context: ModelContext) {
+        for lecture in outdatedLectures(context: context) { sendToClaude(lecture, context: context) }
     }
 
     func startDraft(_ lecture: Lecture, context: ModelContext) {
@@ -160,5 +177,30 @@ final class AnalysisCenter {
     func stopPolling() {
         pollTimer?.invalidate()
         pollTimer = nil
+    }
+}
+
+/// Asks iOS for extra running time (e.g. to finish an upload after the phone is locked).
+@MainActor
+final class BackgroundTask {
+    private var identifier = UIBackgroundTaskIdentifier.invalid
+
+    init(name: String) {
+        identifier = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in
+            Task { @MainActor in self?.end() }
+        }
+    }
+
+    func end() {
+        guard identifier != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(identifier)
+        identifier = .invalid
+    }
+}
+
+extension Lecture {
+    /// True when Claude made these notes with older instructions than this version of the app.
+    var isOutdated: Bool {
+        analysisSource == .claude && analysisVersion < ClaudeRelay.promptVersion && claudeJob != .waiting
     }
 }

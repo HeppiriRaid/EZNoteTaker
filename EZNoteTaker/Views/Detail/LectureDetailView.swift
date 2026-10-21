@@ -51,6 +51,12 @@ struct LectureDetailView: View {
                     ShareLink(item: ShareText.lecture(lecture)) {
                         Label("Share Notes", systemImage: "square.and.arrow.up")
                     }
+                    if AnalysisCenter.relayConfigured, lecture.status != .recording, !lecture.segments.isEmpty {
+                        Button("Redo Study Notes with Claude", systemImage: "arrow.clockwise") {
+                            analysis.sendToClaude(lecture, context: context)
+                        }
+                        .disabled(lecture.claudeJob == .waiting || analysis.sending.contains(lecture.id))
+                    }
                     if recorder.lecture?.id != lecture.id {
                         Divider()
                         Button("Delete Class", systemImage: "trash", role: .destructive) { confirmDelete = true }
@@ -129,6 +135,12 @@ struct AnalysisStatusCard: View {
                 ProgressView(value: Double(progress.done), total: Double(max(progress.total, 1)))
             }
             .card()
+        } else if lecture.isOutdated && AnalysisCenter.relayConfigured {
+            status(icon: "sparkles", color: Theme.sage,
+                   title: "Newer study-note style available",
+                   detail: "This app version gives Claude better instructions (photo stops, captions, every photo placed). Your recording, transcript, photos, stars and notes are kept.") {
+                Button("Update with Claude") { analysis.sendToClaude(lecture, context: context) }
+            }
         } else if lecture.claudeJob == .failed {
             status(icon: "exclamationmark.triangle.fill", color: Theme.recordRed,
                    title: "Claude couldn't finish this class",

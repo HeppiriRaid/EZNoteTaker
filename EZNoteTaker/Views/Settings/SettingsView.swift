@@ -4,6 +4,8 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(AnalysisCenter.self) private var analysis
+    @Environment(\.modelContext) private var context
+    @State private var confirmUpdateAll = false
 
     private let languages: [(String, String)] = [
         ("en-US", "English (US)"), ("en-GB", "English (UK)"), ("en-AU", "English (Australia)"),
@@ -69,9 +71,37 @@ struct SettingsView: View {
                     Text("After each class, Claude Opus 5.5 writes the summary and cheat sheet automatically using your Claude subscription, through Claude Code. Meanwhile an instant draft is made on your iPhone.")
                 }
 
-                Section("Storage") {
+                if AnalysisCenter.relayConfigured {
+                    let outdated = analysis.outdatedLectures(context: context)
+                    Section {
+                        Button {
+                            confirmUpdateAll = true
+                        } label: {
+                            Label(outdated.isEmpty ? "All classes use the latest style"
+                                                   : "Update \(outdated.count) \(outdated.count == 1 ? "class" : "classes") to the latest style",
+                                  systemImage: "arrow.clockwise")
+                        }
+                        .disabled(outdated.isEmpty)
+                    } footer: {
+                        Text("After an app update, re-runs Claude on classes made with older instructions. Recordings, transcripts and photos are never changed; your stars, notes and photo choices are kept.")
+                    }
+                    .confirmationDialog("Update \(outdated.count) classes with Claude?", isPresented: $confirmUpdateAll, titleVisibility: .visible) {
+                        Button("Update All") { analysis.updateAll(context: context) }
+                    } message: {
+                        Text("They're sent one after another; each takes about 10 minutes and uses your Claude subscription.")
+                    }
+                }
+
+                Section {
                     LabeledContent("Recordings & photos",
                                    value: ByteCountFormatter.string(fromByteCount: FileStore.storageUsed(), countStyle: .file))
+                    if let last = DataBackup.latest {
+                        LabeledContent("Last backup", value: last.formatted(date: .abbreviated, time: .shortened))
+                    }
+                } header: {
+                    Text("Storage")
+                } footer: {
+                    Text("Everything stays on this iPhone across app updates. A daily backup of your classes is kept in the Files app › On My iPhone › EZNoteTaker › Backups.")
                 }
             }
             .navigationTitle("Settings")

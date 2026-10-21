@@ -18,6 +18,9 @@ enum ClaudeRelay {
     private static let bookmarkKey = "relayFolderBookmark"
     /// A typical class has ~40 photos; leave plenty of headroom.
     static let maxPhotos = 80
+    /// Bump when the instructions to Claude change in a way worth re-running old classes for.
+    /// 1: first release · 2: photo stops, captions, every photo assigned, whole-word corrections.
+    static let promptVersion = 2
 
     // MARK: Folder
 
@@ -140,6 +143,7 @@ enum ClaudeRelay {
                     let summary = analysis.apply(to: lecture, photoOrder: lecture.promptPhotoOrder,
                                                  source: .claude, context: context)
                     lecture.claudeJob = .done
+                    lecture.analysisVersion = promptVersion
                     try? fm.removeItem(at: resultURL)
                     return .imported(summary)
                 } catch {

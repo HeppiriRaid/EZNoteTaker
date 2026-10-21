@@ -3,12 +3,18 @@ import SwiftUI
 
 @main
 struct EZNoteTakerApp: App {
+    /// Set when the saved classes couldn't be opened (they are left untouched on disk).
+    static var databaseError: String?
+
     let container: ModelContainer = {
+        DataBackup.backupIfNeeded()
         let schema = Schema([Lecture.self, TranscriptSegment.self, Building.self, LecturePhoto.self, StopMarker.self])
         do {
             return try ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema))
         } catch {
-            fatalError("Could not open the database: \(error)")
+            // Never crash or wipe data: run with a temporary empty database and tell the student.
+            EZNoteTakerApp.databaseError = error.localizedDescription
+            return try! ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
         }
     }()
 
@@ -33,6 +39,7 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("selectedTab") private var tab = 0
     @State private var showRecorder = false
+    @State private var databaseError = EZNoteTakerApp.databaseError
 
     var body: some View {
         TabView(selection: $tab) {
@@ -76,6 +83,13 @@ struct RootView: View {
             if active { showRecorder = true }
         }
         .onAppear(perform: recoverInterruptedRecordings)
+        .alert("Couldn't open your saved classes", isPresented: Binding(
+            get: { databaseError != nil }, set: { if !$0 { databaseError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Nothing was deleted: your recordings, photos and daily backups are still on the iPhone (Files › EZNoteTaker). Please don't delete the app — send me this message instead: \(databaseError ?? "")")
+        }
         // Lock-screen console: "Photo" opens the camera, tapping the console opens the recorder.
         .onOpenURL { url in
             guard url.scheme == "eznotetaker", recorder.isActive else { return }

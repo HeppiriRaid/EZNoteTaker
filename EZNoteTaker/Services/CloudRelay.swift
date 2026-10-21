@@ -88,6 +88,7 @@ enum CloudRelay {
                     let analysis = try LectureAnalysis.parse(text)
                     let summary = analysis.apply(to: lecture, photoOrder: lecture.promptPhotoOrder, source: .claude, context: context)
                     lecture.claudeJob = .done
+                    lecture.analysisVersion = ClaudeRelay.promptVersion
                     return .imported(summary)
                 } catch {
                     lecture.claudeJob = .failed
