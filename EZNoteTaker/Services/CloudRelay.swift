@@ -34,6 +34,9 @@ enum CloudRelay {
 
     /// Checks access and installs the GitHub Action into the repo.
     static func installWorkflow() async throws {
+        // An already-installed workflow is left as is: it may be newer than the copy in this build,
+        // and rewriting it needs the token's Workflows permission. Reading it also checks access.
+        if try await get(path: workflowPath) != nil { return }
         guard let url = Bundle.main.url(forResource: "eznotetaker-workflow", withExtension: "yml"),
               let data = try? Data(contentsOf: url) else { throw RelayError.missingWorkflow }
         try await put(path: workflowPath, data: data, message: "Install EZNoteTaker Claude relay")
