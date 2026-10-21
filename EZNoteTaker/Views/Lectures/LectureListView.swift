@@ -6,10 +6,14 @@ struct LectureListView: View {
 
     @Environment(\.modelContext) private var context
     @Environment(AppSettings.self) private var settings
+    @Environment(RecordingSession.self) private var recorder
+    @Environment(AnalysisCenter.self) private var analysis
     @Query(sort: \Lecture.date, order: .reverse) private var lectures: [Lecture]
     @Query private var buildings: [Building]
     @Query private var photos: [LecturePhoto]
-    @State private var pendingDelete: Lecture?
+    @State private var pendingDelete: [Lecture] = []
+    @State private var selecting = false
+    @State private var selected: Set<UUID> = []
 
     var body: some View {
         NavigationStack {
@@ -20,12 +24,29 @@ struct LectureListView: View {
                         emptyState
                     } else {
                         ForEach(lectures) { lecture in
-                            NavigationLink(value: lecture) {
-                                LectureCard(lecture: lecture, week: ClassWeek.number(of: lecture, in: lectures))
-                            }
-                            .buttonStyle(.plain)
-                            .contextMenu {
-                                Button("Delete Class", systemImage: "trash", role: .destructive) { pendingDelete = lecture }
+                            if selecting {
+                                Button { toggleSelection(lecture) } label: {
+                                    LectureCard(lecture: lecture, week: ClassWeek.number(of: lecture, in: lectures))
+                                        .overlay(alignment: .topTrailing) {
+                                            Image(systemName: selected.contains(lecture.id) ? "checkmark.circle.fill" : "circle")
+                                                .font(.title2)
+                                                .foregroundStyle(selected.contains(lecture.id) ? Theme.recordRed : .secondary)
+                                                .padding(12)
+                                        }
+                                        .opacity(isRecording(lecture) ? 0.4 : 1)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(isRecording(lecture))
+                            } else {
+                                NavigationLink(value: lecture) {
+                                    LectureCard(lecture: lecture, week: ClassWeek.number(of: lecture, in: lectures))
+                                }
+                                .buttonStyle(.plain)
+                                .contextMenu {
+                                    if !isRecording(lecture) {
+                                        Button("Delete Class", systemImage: "trash", role: .destructive) { pendingDelete = [lecture] }
+                                    }
+                                }
                             }
                         }
                     }
@@ -36,12 +57,30 @@ struct LectureListView: View {
             .background(Theme.paper)
             .navigationTitle(settings.courseName.isEmpty ? "Classes" : settings.courseName)
             .navigationDestination(for: Lecture.self) { LectureDetailView(lecture: $0) }
-            .overlay(alignment: .bottom) { recordButton }
-            .confirmationDialog("Delete this class?", isPresented: Binding(
-                get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }
-            ), presenting: pendingDelete) { lecture in
-                Button("Delete recording, transcript and photos", role: .destructive) { delete(lecture) }
-                Button("Cancel", role: .cancel) { pendingDelete = nil }
+            .overlay(alignment: .bottom) {
+                if selecting { deleteBar } else { recordButton }
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    if !lectures.isEmpty {
+                        Button(selecting ? "Done" : "Edit") {
+                            withAnimation(.snappy) {
+                                selecting.toggle()
+                                selected = []
+                            }
+                        }
+                    }
+                }
+            }
+            .confirmationDialog(
+                pendingDelete.count == 1 ? "Delete this class?" : "Delete \(pendingDelete.count) classes?",
+                isPresented: Binding(get: { !pendingDelete.isEmpty }, set: { if !$0 { pendingDelete = [] } }),
+                titleVisibility: .visible
+            ) {
+                Button("Delete recording, transcript, photos and notes", role: .destructive) { deletePending() }
+                Button("Cancel", role: .cancel) { pendingDelete = [] }
+            } message: {
+                Text("This can't be undone.")
             }
         }
     }
@@ -85,12 +124,36 @@ struct LectureListView: View {
         .sensoryFeedback(.impact, trigger: lectures.count)
     }
 
-    private func delete(_ lecture: Lecture) {
-        if let url = lecture.audioURL { try? FileManager.default.removeItem(at: url) }
-        for photo in lecture.photos { FileStore.delete(fileName: photo.fileName, in: FileStore.photoDirectory) }
-        context.delete(lecture)
-        try? context.save()
-        pendingDelete = nil
+    private var deleteBar: some View {
+        Button(role: .destructive) {
+            pendingDelete = lectures.filter { selected.contains($0.id) }
+        } label: {
+            Label(selected.isEmpty ? "Select classes to delete" : "Delete \(selected.count)", systemImage: "trash")
+                .font(.headline)
+                .padding(.horizontal, 28)
+                .padding(.vertical, 16)
+                .foregroundStyle(.white)
+                .background((selected.isEmpty ? Color.gray : Theme.recordRed).gradient, in: Capsule())
+        }
+        .disabled(selected.isEmpty)
+        .padding(.bottom, 16)
+    }
+
+    private func isRecording(_ lecture: Lecture) -> Bool { recorder.lecture?.id == lecture.id }
+
+    private func toggleSelection(_ lecture: Lecture) {
+        if selected.contains(lecture.id) { selected.remove(lecture.id) } else { selected.insert(lecture.id) }
+        Haptics.light()
+    }
+
+    private func deletePending() {
+        for lecture in pendingDelete where !isRecording(lecture) {
+            analysis.delete(lecture, context: context)
+        }
+        pendingDelete = []
+        selected = []
+        selecting = false
+        Haptics.success()
     }
 }
 

@@ -178,6 +178,9 @@ and it opens as an editable Google Doc with your photos, a heading per class day
 building, and every architect, year, fact and story. The file is a standard `.docx`, so Word and
 Pages open it too. **PDF for printing** is in the same menu.
 
+To delete a class recorded by mistake, open it › **⋯ › Delete Class**, or tap **Edit** on the Classes
+list to select several. While recording, the **✕** at the top left discards the recording.
+
 Everything is editable: fix a year or architect, star buildings, add your own notes, or move a
 photo to a different building (tap the photo › *Choose building*). Re-running Claude keeps your
 notes, stars and manual photo choices.

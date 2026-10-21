@@ -7,6 +7,9 @@ struct LectureDetailView: View {
     @Environment(\.modelContext) private var context
     @State private var tab: DetailTab = .summary
     @State private var renaming = false
+    @State private var confirmDelete = false
+    @Environment(\.dismiss) private var dismiss
+    @Environment(RecordingSession.self) private var recorder
     @State private var newTitle = ""
 
     enum DetailTab: String, CaseIterable, Identifiable {
@@ -48,10 +51,27 @@ struct LectureDetailView: View {
                     ShareLink(item: ShareText.lecture(lecture)) {
                         Label("Share Notes", systemImage: "square.and.arrow.up")
                     }
+                    if recorder.lecture?.id != lecture.id {
+                        Divider()
+                        Button("Delete Class", systemImage: "trash", role: .destructive) { confirmDelete = true }
+                    }
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
             }
+        }
+        .confirmationDialog("Delete this class?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Delete recording, transcript, photos and notes", role: .destructive) {
+                dismiss()
+                // Delete after leaving the screen so it never shows a removed class.
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(400))
+                    analysis.delete(lecture, context: context)
+                    Haptics.success()
+                }
+            }
+        } message: {
+            Text("This can't be undone.")
         }
         .alert("Rename class", isPresented: $renaming) {
             TextField("Title", text: $newTitle)

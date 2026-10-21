@@ -138,6 +138,17 @@ final class AnalysisCenter {
         }
     }
 
+    /// Deletes a class: its recording, transcript, photos and study notes.
+    func delete(_ lecture: Lecture, context: ModelContext) {
+        draftTasks[lecture.id]?.cancel()
+        draftTasks[lecture.id] = nil
+        drafting[lecture.id] = nil
+        if let url = lecture.audioURL { try? FileManager.default.removeItem(at: url) }
+        for photo in lecture.photos { FileStore.delete(fileName: photo.fileName, in: FileStore.photoDirectory) }
+        context.delete(lecture)
+        try? context.save()
+    }
+
     func startPolling(context: ModelContext) {
         checkRelay(context: context)
         pollTimer?.invalidate()
