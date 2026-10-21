@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>EZNoteTaker records your professor so it can transcribe the lecture.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>EZNoteTaker turns the lecture audio into a live transcript on your iPhone.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Take photos of buildings during class; they are placed on each building's cheat sheet card.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Tags your building photos and stops with their location so they appear on the cheat sheet map.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Add building photos from your library to a class.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+</dict>
+</plist>
