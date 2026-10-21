@@ -76,6 +76,12 @@ struct RootView: View {
             if active { showRecorder = true }
         }
         .onAppear(perform: recoverInterruptedRecordings)
+        // Lock-screen console: "Photo" opens the camera, tapping the console opens the recorder.
+        .onOpenURL { url in
+            guard url.scheme == "eznotetaker", recorder.isActive else { return }
+            showRecorder = true
+            if url.host == "camera" { recorder.cameraRequested = true }
+        }
     }
 
     private func startRecording() {
@@ -85,6 +91,7 @@ struct RootView: View {
     /// If the app was killed mid-class, the lecture is still saved; mark it finished so it gets processed.
     private func recoverInterruptedRecordings() {
         guard !recorder.isActive else { return }
+        RecordingSession.endLeftoverConsoles()
         let raw = LectureStatus.recording.rawValue
         let descriptor = FetchDescriptor<Lecture>(predicate: #Predicate { $0.statusRaw == raw })
         for lecture in (try? context.fetch(descriptor)) ?? [] {

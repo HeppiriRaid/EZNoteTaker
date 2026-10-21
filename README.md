@@ -40,6 +40,9 @@ when it's ready.
   moment. After Claude's pass, each photo sits on its building's cheat-sheet card.
 - **Now discussing…** banner: Apple Intelligence guesses the current building every ~40 s.
   Photos get tagged with that guess.
+- **Lock-screen console** (Live Activity, also in the Dynamic Island): REC/PAUSED, live timer,
+  photo count, last photo, and the building being discussed, with **Pause/Resume** that works without
+  unlocking and **Photo**, which opens the camera after Face ID.
 - Keeps recording with the screen locked, pauses for phone calls and resumes afterward,
   and saves continuously, so a crash never loses a class.
 - Misheard names (for example "Lou Corbusier") are fixed in the transcript automatically.
@@ -66,9 +69,11 @@ Pick one of these:
 ### A. Xcode (free Apple ID)
 
 1. Install **Xcode 26** from the Mac App Store and clone or download this repository.
-2. Open `EZNoteTaker.xcodeproj`. Select the **EZNoteTaker** target › **Signing & Capabilities** ›
-   Team › *Add an Account…* and sign in with your Apple ID. If the bundle identifier is taken,
-   change it, e.g. `com.yourname.EZNoteTaker`.
+2. Open `EZNoteTaker.xcodeproj`. In **Signing & Capabilities**, set **Team** to your Apple ID for
+   **both** targets: **EZNoteTaker** and **EZNoteTakerWidgetsExtension** (the lock-screen console).
+   If the bundle identifier is taken, don't edit it in the Signing tab; instead select the blue
+   project icon › **Build Settings**, search for `APP_BUNDLE_ID`, and change it there (e.g.
+   `com.yourname.EZNoteTaker`). Both targets follow it.
 3. On the iPhone, turn on **Settings › Privacy & Security › Developer Mode** (it restarts).
 4. Connect the iPhone, select it as the run destination at the top of Xcode and press **Run** (⌘R).
 5. The first time, trust the developer on the phone: **Settings › General › VPN & Device
@@ -185,5 +190,7 @@ EZNoteTaker/
   Services/       Audio capture, transcription, camera, on-device AI, Claude relays
   Views/          Classes list, live recording, class detail, cheat sheet, study, settings
   Relay/          Mac relay script + installer, GitHub Action (bundled into the app)
+Shared/           Live Activity model + Pause/Resume intent (app and widget extension)
+EZNoteTakerWidgets/  Lock-screen / Dynamic Island recording console
 tools/auto-refresh/  Free nightly rebuild + reinstall so the 7-day signature never expires
 ```

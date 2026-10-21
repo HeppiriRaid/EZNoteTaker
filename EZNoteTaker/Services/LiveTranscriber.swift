@@ -80,6 +80,12 @@ final class AnalyzerTranscriber: LiveTranscriber, @unchecked Sendable {
         }
 
         let analyzer = SpeechAnalyzer(modules: [transcriber])
+        // Bias recognition toward the course's names (architects, buildings) without changing the audio.
+        if !vocabulary.isEmpty {
+            let context = AnalysisContext()
+            context.contextualStrings[.general] = Array(vocabulary.prefix(100))
+            try? await analyzer.setContext(context)
+        }
         analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
 
         let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()

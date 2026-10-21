@@ -41,6 +41,11 @@ struct RecordingView: View {
             }
         }
         .onDisappear { camera.stop() }
+        .onChange(of: recorder.cameraRequested, initial: true) { _, requested in
+            guard requested else { return }
+            recorder.cameraRequested = false
+            if !cameraOpen { openCamera() }
+        }
         .confirmationDialog("Finish this class?", isPresented: $confirmFinish, titleVisibility: .visible) {
             Button("Finish & Make Study Notes") { finish() }
             Button("Keep Recording", role: .cancel) {}

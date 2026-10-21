@@ -1,3 +1,4 @@
+import ActivityKit
 import AVFoundation
 import Foundation
 import SwiftData
@@ -46,6 +47,14 @@ final class RecordingSession {
     private var detectionTask: Task<Void, Never>?
     private var lastSave = Date()
     private var interruptionObserver: NSObjectProtocol?
+    private var activity: Activity<RecordingActivityAttributes>?
+
+    /// Set when the lock-screen "Photo" button opened the app; the recording screen opens the camera.
+    var cameraRequested = false
+
+    init() {
+        RecordingControl.togglePause = { [weak self] in self?.togglePause() }
+    }
 
     var isActive: Bool {
         switch phase {
@@ -69,7 +78,9 @@ final class RecordingSession {
         phase = .preparing("Loading speech model… (first time can take a minute)")
         let locale = Locale(identifier: settings.localeIdentifier)
         do {
-            let transcriber = try await TranscriberFactory.make(locale: locale, vocabulary: settings.vocabularyList)
+            // Names from earlier classes help the recognizer spell buildings and architects correctly.
+            let vocabulary = Self.uniqued(settings.vocabularyList + Self.learnedNames(context))
+            let transcriber = try await TranscriberFactory.make(locale: locale, vocabulary: vocabulary)
             transcriber.onUpdate = { [weak self] update in
                 Task { @MainActor in self?.handle(update) }
             }
@@ -107,6 +118,7 @@ final class RecordingSession {
         UIApplication.shared.isIdleTimerDisabled = settings.keepScreenOn
         observeInterruptions()
         phase = .recording
+        startConsole(courseName: settings.courseName)
         Haptics.success()
 
         clock = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
@@ -168,8 +180,10 @@ final class RecordingSession {
                 if let guess = try? await LiveBuildingDetector.guess(recentTranscript: recent, previous: self.currentGuess,
                                                                      courseContext: courseContext) {
                     if guess.discussingABuilding, !guess.name.isEmpty {
-                        if guess.name != self.currentGuess?.name { Haptics.light() }
+                        let changed = guess.name != self.currentGuess?.name
+                        if changed { Haptics.light() }
                         self.currentGuess = guess
+                        if changed { self.updateConsole() }
                     }
                 }
             }
@@ -201,6 +215,7 @@ final class RecordingSession {
             photo.lecture = lecture
             try? context.save()
             photoCount += 1
+            defer { updateConsole() }
             recentPhotos.insert(photo, at: 0)
             // The photo marks a stop in the live transcript, with what was being discussed.
             let about = currentGuess.map { "Now discussing: \($0.label)" }
@@ -240,6 +255,8 @@ final class RecordingSession {
         default:
             return
         }
+        elapsed = audio.activeSeconds
+        updateConsole()
         Haptics.light()
     }
 
@@ -287,6 +304,7 @@ final class RecordingSession {
     func dismissError() { if case .failed = phase { phase = .idle } }
 
     private func cleanUp() {
+        endConsole()
         LocationProvider.shared.stop()
         UIApplication.shared.isIdleTimerDisabled = false
         if let interruptionObserver { NotificationCenter.default.removeObserver(interruptionObserver) }
@@ -321,5 +339,74 @@ final class RecordingSession {
                 self.audio.ensureRunning()
             }
         }
+    }
+
+    // MARK: Lock-screen console (Live Activity)
+
+    private func consoleState() -> RecordingActivityAttributes.ContentState {
+        let seconds = audio.activeSeconds
+        return RecordingActivityAttributes.ContentState(
+            isPaused: phase == .paused,
+            timerStart: Date().addingTimeInterval(-seconds),
+            elapsed: seconds,
+            photoCount: photoCount,
+            lastPhotoAt: recentPhotos.first?.capturedDate,
+            nowDiscussing: currentGuess?.label ?? ""
+        )
+    }
+
+    private func startConsole(courseName: String) {
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+        activity = try? Activity.request(
+            attributes: RecordingActivityAttributes(courseName: courseName.isEmpty ? "Class" : courseName),
+            content: ActivityContent(state: consoleState(), staleDate: nil),
+            pushType: nil
+        )
+    }
+
+    private func updateConsole() {
+        guard let activity else { return }
+        let content = ActivityContent(state: consoleState(), staleDate: nil)
+        Task { await activity.update(content) }
+    }
+
+    private func endConsole() {
+        guard let activity else { return }
+        self.activity = nil
+        let content = ActivityContent(state: consoleState(), staleDate: nil)
+        Task { await activity.end(content, dismissalPolicy: .immediate) }
+    }
+
+    /// Removes a console left behind if the app was closed mid-recording.
+    static func endLeftoverConsoles() {
+        Task {
+            for activity in Activity<RecordingActivityAttributes>.activities {
+                await activity.end(nil, dismissalPolicy: .immediate)
+            }
+        }
+    }
+
+    // MARK: Vocabulary
+
+    /// Building and architect names from earlier classes.
+    private static func learnedNames(_ context: ModelContext) -> [String] {
+        let buildings = (try? context.fetch(FetchDescriptor<Building>())) ?? []
+        var names: [String] = []
+        for building in buildings {
+            // "Art Institute of Chicago – Allerton Building (with the Lions)" → both parts, no notes.
+            let name = building.name.replacingOccurrences(of: #"\s*\(.*\)"#, with: "", options: .regularExpression)
+            names += name.components(separatedBy: " – ")
+            names += building.architect
+                .replacingOccurrences(of: #"\s*\(.*\)"#, with: "", options: .regularExpression)
+                .components(separatedBy: CharacterSet(charactersIn: ",;&/"))
+        }
+        return names
+    }
+
+    private static func uniqued(_ names: [String]) -> [String] {
+        var seen = Set<String>()
+        return names
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { (3...60).contains($0.count) && seen.insert($0.lowercased()).inserted }
     }
 }
