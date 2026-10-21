@@ -9,6 +9,7 @@ final class CameraController: NSObject, AVCapturePhotoCaptureDelegate, @unchecke
     private let output = AVCapturePhotoOutput()
     private let queue = DispatchQueue(label: "camera.session")
     private var configured = false
+    private var trackingOrientation = false
     private var completion: ((UIImage?) -> Void)?
 
     static func requestAccess() async -> Bool {
@@ -20,6 +21,10 @@ final class CameraController: NSObject, AVCapturePhotoCaptureDelegate, @unchecke
     }
 
     func start() {
+        if !trackingOrientation {
+            UIDevice.current.beginGeneratingDeviceOrientationNotifications()
+            trackingOrientation = true
+        }
         queue.async { [self] in
             if !configured { configure() }
             if !session.isRunning { session.startRunning() }
@@ -27,6 +32,10 @@ final class CameraController: NSObject, AVCapturePhotoCaptureDelegate, @unchecke
     }
 
     func stop() {
+        if trackingOrientation {
+            UIDevice.current.endGeneratingDeviceOrientationNotifications()
+            trackingOrientation = false
+        }
         queue.async { [self] in
             if session.isRunning { session.stopRunning() }
         }
@@ -50,7 +59,9 @@ final class CameraController: NSObject, AVCapturePhotoCaptureDelegate, @unchecke
         configured = true
     }
 
+    /// Call on the main thread.
     func capture(_ completion: @escaping (UIImage?) -> Void) {
+        let angle = Self.currentRotationAngle()
         queue.async { [self] in
             guard session.isRunning else {
                 DispatchQueue.main.async { completion(nil) }
@@ -60,7 +71,7 @@ final class CameraController: NSObject, AVCapturePhotoCaptureDelegate, @unchecke
             let settings = AVCapturePhotoSettings()
             settings.photoQualityPrioritization = .balanced
             if let connection = output.connection(with: .video) {
-                connection.videoRotationAngle = Self.currentRotationAngle()
+                if connection.isVideoRotationAngleSupported(angle) { connection.videoRotationAngle = angle }
             }
             output.capturePhoto(with: settings, delegate: self)
         }

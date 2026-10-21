@@ -179,7 +179,10 @@ struct FlashcardsView: View {
 
     private func front(_ b: Building) -> some View {
         VStack(spacing: 14) {
-            if let photo = b.sortedPhotos.randomElement() {
+            let photos = b.sortedPhotos
+            // Stable while the card is shown, but rotates between study rounds.
+            if !photos.isEmpty {
+                let photo = photos[(b.studyCorrect + b.studyMissed) % photos.count]
                 PhotoThumb(fileName: photo.fileName, maxPixel: 1000)
                     .frame(height: 300)
                     .frame(maxWidth: .infinity)

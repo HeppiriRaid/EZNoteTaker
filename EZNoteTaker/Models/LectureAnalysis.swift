@@ -154,6 +154,7 @@ struct LectureAnalysis: Decodable {
     @MainActor
     @discardableResult
     func apply(to lecture: Lecture, photoOrder: [String], source: AnalysisSource, context: ModelContext) -> ApplySummary {
+        guard lecture.modelContext != nil, !lecture.isDeleted else { return ApplySummary(buildings: 0, photosPlaced: 0, corrections: 0) }
         if lecture.title.isEmpty || lecture.analysisSource == .onDevice, !title.isEmpty { lecture.title = title }
         lecture.overview = overview
         lecture.summarySections = sections
@@ -169,11 +170,20 @@ struct LectureAnalysis: Decodable {
             return (p, Self.normalize(b.name))
         }
 
+        // Buildings are updated in place when the name matches, so screens showing them stay valid.
         var created: [String: Building] = [:]
         for (index, info) in buildings.enumerated() where !info.name.isEmpty {
             let key = Self.normalize(info.name)
             guard created[key] == nil else { continue }
-            let b = Building(name: info.name)
+            let b: Building
+            if let existing = previous[key] {
+                b = existing
+                b.name = info.name
+            } else {
+                b = Building(name: info.name)
+                context.insert(b)
+                b.lecture = lecture
+            }
             b.architect = info.architect
             b.yearBuilt = info.yearBuilt
             b.yearSort = info.yearSort ?? Self.firstYear(in: info.yearBuilt)
@@ -189,17 +199,10 @@ struct LectureAnalysis: Decodable {
             b.latitude = info.latitude
             b.longitude = info.longitude
             b.order = index
-            if let old = previous[key] {
-                b.userNotes = old.userNotes
-                b.isStarred = old.isStarred
-                b.studyCorrect = old.studyCorrect
-                b.studyMissed = old.studyMissed
-            }
-            context.insert(b)
-            b.lecture = lecture
             created[key] = b
         }
-        for old in oldBuildings { context.delete(old) }
+        let kept = Set(created.values.map(\.id))
+        for old in oldBuildings where !kept.contains(old.id) { context.delete(old) }
 
         // P1, P2… → photos, in the order they were numbered when the job was created.
         let byUUID = Dictionary(lecture.photos.map { ($0.id.uuidString, $0) }, uniquingKeysWith: { a, _ in a })
@@ -220,8 +223,14 @@ struct LectureAnalysis: Decodable {
             }
         }
         for (photo, name) in manualLinks {
-            photo.building = created[name] ?? photo.building
-            if photo.building != nil { placed += 1 }
+            if let building = created[name] {
+                photo.building = building
+                placed += 1
+            } else {
+                // The building the student picked no longer exists; let automatic matching take over.
+                photo.building = nil
+                photo.manuallyAssigned = false
+            }
         }
 
         // Fix misheard proper nouns in the transcript.

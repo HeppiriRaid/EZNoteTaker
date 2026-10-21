@@ -38,7 +38,12 @@ final class AnalysisCenter {
     func sendToClaude(_ lecture: Lecture, context: ModelContext) {
         guard !sending.contains(lecture.id) else { return }
         sending.insert(lecture.id)
-        let bgTask = UIApplication.shared.beginBackgroundTask(withName: "Upload lecture")
+        // Extra time to finish uploading if the phone is locked right after class.
+        var bgTask = UIBackgroundTaskIdentifier.invalid
+        bgTask = UIApplication.shared.beginBackgroundTask(withName: "Upload lecture") {
+            UIApplication.shared.endBackgroundTask(bgTask)
+            bgTask = .invalid
+        }
         Task {
             do {
                 if CloudRelay.isConfigured {
@@ -52,7 +57,7 @@ final class AnalysisCenter {
             }
             try? context.save()
             sending.remove(lecture.id)
-            UIApplication.shared.endBackgroundTask(bgTask)
+            if bgTask != .invalid { UIApplication.shared.endBackgroundTask(bgTask) }
         }
     }
 
@@ -75,7 +80,7 @@ final class AnalysisCenter {
                     }
                 }
                 // Claude may have finished first — never overwrite its notes with the draft.
-                if lecture.analysisSource != .claude, !Task.isCancelled {
+                if lecture.modelContext != nil, !lecture.isDeleted, lecture.analysisSource != .claude, !Task.isCancelled {
                     analysis.apply(to: lecture, photoOrder: photoOrder, source: .onDevice, context: context)
                 }
             } catch {
