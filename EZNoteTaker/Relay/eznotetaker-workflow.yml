@@ -40,6 +40,13 @@ jobs:
             echo "::error::Missing repository secret CLAUDE_CODE_OAUTH_TOKEN. Run 'claude setup-token' and add it under Settings > Secrets and variables > Actions, then re-run this workflow."
             exit 1
           fi
+          # Tokens pasted on a phone often pick up line breaks or spaces.
+          CLAUDE_CODE_OAUTH_TOKEN="$(printf '%s' "$CLAUDE_CODE_OAUTH_TOKEN" | tr -d '[:space:]')"
+          export CLAUDE_CODE_OAUTH_TOKEN
+          case "$CLAUDE_CODE_OAUTH_TOKEN" in
+            sk-ant-oat*) ;;
+            *) echo "::error::CLAUDE_CODE_OAUTH_TOKEN doesn't look like a Claude token (it should start with sk-ant-oat). Copy the long token printed at the end of 'claude setup-token', not the sign-in code."; exit 1 ;;
+          esac
           mkdir -p results
           for job in jobs/*/; do
             [ -d "$job" ] || continue
