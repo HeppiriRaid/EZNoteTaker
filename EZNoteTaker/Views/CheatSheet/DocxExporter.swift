@@ -47,11 +47,11 @@ enum DocxExporter {
         paragraph(courseName.isEmpty ? "Architecture History" : courseName, style: "Title")
         paragraph("Exam cheat sheet · \(Date().formatted(date: .long, time: .omitted))", italic: true, color: "777777")
 
-        for (index, lecture) in lectures.enumerated() where !lecture.buildings.isEmpty {
-            paragraph("Day \(index + 1) — \(lecture.date.formatted(date: .abbreviated, time: .omitted)): \(lecture.displayTitle)", style: "Heading1")
-            if !lecture.overview.isEmpty { paragraph(lecture.overview, italic: true) }
+        for day in ClassWeek.group(lectures) where !day.entries.isEmpty {
+            paragraph("Week \(day.number) — \(day.date.formatted(date: .abbreviated, time: .omitted)): \(day.title)", style: "Heading1")
+            if !day.overview.isEmpty { paragraph(day.overview, italic: true) }
 
-            for building in lecture.sortedBuildings {
+            for building in day.entries.map(\.building) {
                 paragraph(building.name + (building.importance == .high ? "  ★ likely on exam" : ""), style: "Heading2")
                 paragraph("Architect: \(building.architectDisplay)", bold: true)
                 paragraph("Built: \(building.yearDisplay)", bold: true)

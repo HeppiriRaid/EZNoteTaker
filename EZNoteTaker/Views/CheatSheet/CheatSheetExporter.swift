@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// Builds a printable, multi-page PDF of the cheat sheet (letter size), one section per class day.
+/// Builds a printable, multi-page PDF of the cheat sheet (letter size), one section per class week.
 @MainActor
 enum CheatSheetExporter {
     static func makePDF(lectures: [Lecture]) -> URL? {
@@ -17,10 +17,10 @@ enum CheatSheetExporter {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         )]
-        for (index, lecture) in lectures.enumerated() where !lecture.buildings.isEmpty {
-            blocks.append(AnyView(DayHeader(day: index + 1, lecture: lecture, count: lecture.buildings.count)))
-            for building in lecture.sortedBuildings {
-                blocks.append(AnyView(CheatCard(building: building, printMode: true)))
+        for day in ClassWeek.group(lectures) where !day.entries.isEmpty {
+            blocks.append(AnyView(DayHeader(day: day, count: day.entries.count)))
+            for entry in day.entries {
+                blocks.append(AnyView(CheatCard(building: entry.building, printMode: true)))
             }
         }
 

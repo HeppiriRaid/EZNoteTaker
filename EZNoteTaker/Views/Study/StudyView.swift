@@ -9,7 +9,7 @@ struct StudyView: View {
 
     enum DeckChoice: Hashable {
         case all, likely, weak, starred
-        case lecture(UUID)
+        case week(Date)
     }
 
     private var deckBuildings: [Building] {
@@ -18,7 +18,8 @@ struct StudyView: View {
         case .likely: buildings.filter { $0.importance == .high }
         case .weak: buildings.filter { $0.studyMissed > 0 }
         case .starred: buildings.filter(\.isStarred)
-        case .lecture(let id): buildings.filter { $0.lecture?.id == id }
+        case .week(let start):
+            ClassWeek.group(lectures).first { $0.weekStart == start }?.entries.map(\.building) ?? []
         }
     }
 
@@ -37,8 +38,8 @@ struct StudyView: View {
                             Text("Likely on exam").tag(DeckChoice.likely)
                             Text("Need practice").tag(DeckChoice.weak)
                             Text("Starred").tag(DeckChoice.starred)
-                            ForEach(Array(lectures.enumerated()), id: \.element.id) { index, lecture in
-                                Text("Day \(index + 1): \(lecture.displayTitle)").tag(DeckChoice.lecture(lecture.id))
+                            ForEach(ClassWeek.group(lectures)) { day in
+                                Text("Week \(day.number): \(day.title)").tag(DeckChoice.week(day.weekStart))
                             }
                         }
                         .pickerStyle(.menu)

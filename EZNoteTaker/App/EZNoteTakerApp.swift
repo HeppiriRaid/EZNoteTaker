@@ -100,6 +100,10 @@ struct RootView: View {
                 AnalysisCenter.shared.lectureFinished(lecture, context: context)
             }
         }
+        // Make sure every photo of an analyzed class sits on a building card.
+        for lecture in (try? context.fetch(FetchDescriptor<Lecture>())) ?? [] where !lecture.buildings.isEmpty {
+            PhotoPlacement.fillGaps(in: lecture)
+        }
         try? context.save()
     }
 }

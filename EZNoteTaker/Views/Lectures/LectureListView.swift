@@ -21,7 +21,7 @@ struct LectureListView: View {
                     } else {
                         ForEach(lectures) { lecture in
                             NavigationLink(value: lecture) {
-                                LectureCard(lecture: lecture)
+                                LectureCard(lecture: lecture, week: ClassWeek.number(of: lecture, in: lectures))
                             }
                             .buttonStyle(.plain)
                             .contextMenu {
@@ -112,12 +112,13 @@ private struct StatTile: View {
 
 struct LectureCard: View {
     let lecture: Lecture
+    var week: Int?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(lecture.date.formatted(.dateTime.weekday(.wide).month().day()))
+                    Text((week.map { "Week \($0) · " } ?? "") + lecture.date.formatted(.dateTime.weekday(.wide).month().day()))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Theme.brick)
                         .textCase(.uppercase)

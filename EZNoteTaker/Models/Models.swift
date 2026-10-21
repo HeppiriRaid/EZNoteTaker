@@ -309,3 +309,104 @@ enum PhotoStops {
         return (dx * dx + dy * dy).squareRoot()
     }
 }
+
+// MARK: - Class weeks
+
+/// One class week. The class meets once a week, so every recording in the same calendar week
+/// (e.g. a recording that was stopped and restarted) belongs to the same class; only a new week
+/// starts a new folder. Weeks are numbered from the first class, so a skipped week (holiday)
+/// keeps the numbering true to the calendar.
+struct ClassWeek: Identifiable {
+    struct Entry: Identifiable {
+        let building: Building
+        /// Later class weeks where the same building came up again.
+        var revisitedOn: [Int] = []
+        var id: UUID { building.id }
+    }
+
+    let number: Int
+    /// Start of the calendar week (used as a stable id).
+    let weekStart: Date
+    /// Date of the class itself (first recording that week).
+    let date: Date
+    let lectures: [Lecture]
+    /// Buildings introduced this week, in the order visited (duplicates merged).
+    var entries: [Entry]
+    var id: Date { weekStart }
+
+    var title: String {
+        let titles = lectures.map(\.displayTitle).filter { !$0.hasPrefix("Class —") }
+        return titles.isEmpty ? date.formatted(date: .complete, time: .omitted) : titles.joined(separator: " · ")
+    }
+
+    var label: String { "WEEK \(number) · \(date.formatted(.dateTime.weekday(.abbreviated).month().day()))" }
+    var overview: String { lectures.map(\.overview).filter { !$0.isEmpty }.joined(separator: "\n\n") }
+
+    static func weekStart(of date: Date, calendar: Calendar = .current) -> Date {
+        calendar.dateInterval(of: .weekOfYear, for: date)?.start ?? calendar.startOfDay(for: date)
+    }
+
+    static func group(_ lectures: [Lecture], calendar: Calendar = .current) -> [ClassWeek] {
+        let byWeek = Dictionary(grouping: lectures) { weekStart(of: $0.date, calendar: calendar) }
+        let starts = byWeek.keys.sorted()
+        guard let firstWeek = starts.first else { return [] }
+        var weeks: [ClassWeek] = []
+        var introducedIn: [String: (week: Int, index: Int)] = [:]
+
+        for (offset, start) in starts.enumerated() {
+            let recordings = (byWeek[start] ?? []).sorted { $0.date < $1.date }
+            let number = (calendar.dateComponents([.weekOfYear], from: firstWeek, to: start).weekOfYear ?? offset) + 1
+            var week = ClassWeek(number: number, weekStart: start, date: recordings.first?.date ?? start,
+                                 lectures: recordings, entries: [])
+            for building in recordings.flatMap(\.sortedBuildings) {
+                let key = LectureAnalysis.normalize(building.name)
+                if let first = introducedIn[key] {
+                    // Introduced in an earlier week: note the revisit. Same week: a duplicate.
+                    if first.week != offset, !weeks[first.week].entries[first.index].revisitedOn.contains(number) {
+                        weeks[first.week].entries[first.index].revisitedOn.append(number)
+                    }
+                    continue
+                }
+                introducedIn[key] = (offset, week.entries.count)
+                week.entries.append(Entry(building: building))
+            }
+            weeks.append(week)
+        }
+        return weeks
+    }
+
+    /// Week number for a lecture, matching `group`.
+    static func number(of lecture: Lecture, in lectures: [Lecture], calendar: Calendar = .current) -> Int {
+        guard let first = lectures.map(\.date).min() else { return 1 }
+        let from = weekStart(of: first, calendar: calendar), to = weekStart(of: lecture.date, calendar: calendar)
+        return (calendar.dateComponents([.weekOfYear], from: from, to: to).weekOfYear ?? 0) + 1
+    }
+}
+
+// MARK: - Photo placement
+
+enum PhotoPlacement {
+    /// Puts every photo that has no building on one: the building another photo of the same stop
+    /// shows, otherwise the building being discussed when the photo was taken. Photos the student
+    /// explicitly set to "No building" are left alone.
+    @discardableResult
+    static func fillGaps(in lecture: Lecture) -> Int {
+        let buildings = lecture.buildings.filter { !$0.isDeleted }
+        guard !buildings.isEmpty else { return 0 }
+        let valid = Set(buildings.map(\.id))
+        let byTime = buildings.sorted { $0.firstMentioned < $1.firstMentioned }
+        var filled = 0
+        for stop in PhotoStops.group(lecture.photos) {
+            let stopBuilding = stop.lazy.compactMap(\.building).first { valid.contains($0.id) && !$0.isDeleted }
+            for photo in stop {
+                if let current = photo.building, valid.contains(current.id), !current.isDeleted { continue }
+                if photo.manuallyAssigned && photo.building == nil { continue }
+                photo.building = stopBuilding
+                    ?? byTime.last { $0.firstMentioned <= photo.takenAt + 30 }
+                    ?? byTime.first
+                filled += 1
+            }
+        }
+        return filled
+    }
+}

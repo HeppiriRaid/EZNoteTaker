@@ -221,15 +221,14 @@ struct LectureAnalysis: Decodable {
                 .max { $0.key.count < $1.key.count }?.value
         }
 
-        // Photos Claude placed, or deliberately left without a building.
+        // Photos Claude placed on a building.
         var decided = Set<UUID>()
         for assignment in photoAssignments {
             let key = assignment.photoId.uppercased().replacingOccurrences(of: ".JPG", with: "")
             guard let photo = photoByPromptID[key] else { continue }
             if !assignment.caption.isEmpty { photo.caption = assignment.caption }
             guard !photo.manuallyAssigned else { continue }
-            let match = building(named: assignment.buildingName)
-            if match != nil || assignment.buildingName.trimmingCharacters(in: .whitespaces).isEmpty {
+            if let match = building(named: assignment.buildingName) {
                 photo.building = match
                 decided.insert(photo.id)
             }
@@ -244,17 +243,11 @@ struct LectureAnalysis: Decodable {
             }
         }
 
-        // Every other photo goes to the building another photo of the same stop shows,
-        // otherwise to the building being discussed when it was taken.
-        let byTime = created.values.sorted { $0.firstMentioned < $1.firstMentioned }
-        for stop in PhotoStops.group(lecture.photos) {
-            let stopBuilding = stop.lazy.compactMap { photo in photo.building.flatMap { kept.contains($0.id) ? $0 : nil } }.first
-            for photo in stop where !photo.manuallyAssigned && !decided.contains(photo.id) {
-                photo.building = stopBuilding
-                    ?? byTime.last { $0.firstMentioned <= photo.takenAt + 30 }
-                    ?? byTime.first
-            }
+        // Every other photo goes to the building of its stop, or the one being discussed when it was taken.
+        for photo in lecture.photos where !photo.manuallyAssigned && !decided.contains(photo.id) {
+            photo.building = nil
         }
+        PhotoPlacement.fillGaps(in: lecture)
         let placed = lecture.photos.filter { photo in photo.building.map { kept.contains($0.id) } ?? false }.count
 
         // Fix misheard proper nouns in the transcript.
