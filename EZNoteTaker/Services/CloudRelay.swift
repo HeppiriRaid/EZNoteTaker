@@ -13,9 +13,18 @@ enum CloudRelay {
 
     // MARK: Configuration
 
+    /// Stored in both UserDefaults and the Keychain (like the token), so the connection survives app
+    /// updates and even a reinstall. Never rename these keys.
     static var repo: String {
-        get { UserDefaults.standard.string(forKey: "cloudRelayRepo") ?? "" }
-        set { UserDefaults.standard.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "cloudRelayRepo") }
+        get {
+            if let saved = UserDefaults.standard.string(forKey: "cloudRelayRepo"), !saved.isEmpty { return saved }
+            return Keychain.get("github-relay-repo") ?? ""
+        }
+        set {
+            let value = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            UserDefaults.standard.set(value, forKey: "cloudRelayRepo")
+            Keychain.set(value, for: "github-relay-repo")
+        }
     }
 
     static var token: String {
