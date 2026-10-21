@@ -43,8 +43,9 @@ when it's ready.
 - **Lock-screen console** (Live Activity, also in the Dynamic Island): REC/PAUSED, live timer,
   photo count, last photo, and the building being discussed, with **Pause/Resume** that works without
   unlocking and **Photo**, which opens the camera after Face ID.
-- Keeps recording with the screen locked, pauses for phone calls and resumes afterward,
-  and saves continuously, so a crash never loses a class.
+- Keeps recording with the screen locked and while taking photos; only the Pause button pauses it.
+  The microphone reconnects by itself after a call, and everything is saved continuously, so a crash
+  never loses a class.
 - Misheard names (for example "Lou Corbusier") are fixed in the transcript automatically.
 
 ## Requirements
