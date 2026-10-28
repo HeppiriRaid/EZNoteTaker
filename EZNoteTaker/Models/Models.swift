@@ -92,13 +92,6 @@ final class Lecture {
 
     var sortedSegments: [TranscriptSegment] { segments.sorted { $0.start < $1.start } }
     var sortedPhotos: [LecturePhoto] { photos.sorted { $0.takenAt < $1.takenAt } }
-
-    /// The image to show for this building: the student's first photo, else the reference photo.
-    var displayImage: (fileName: String, isReference: Bool)? {
-        if let photo = sortedPhotos.first { return (photo.fileName, false) }
-        if !referenceImageFile.isEmpty { return (referenceImageFile, true) }
-        return nil
-    }
     var sortedMarkers: [StopMarker] { markers.sorted { $0.time < $1.time } }
     var sortedBuildings: [Building] {
         buildings.sorted { ($0.order, $0.firstMentioned) < ($1.order, $1.firstMentioned) }
@@ -226,6 +219,13 @@ final class Building {
     }
 
     var sortedPhotos: [LecturePhoto] { photos.sorted { $0.takenAt < $1.takenAt } }
+
+    /// The image to show for this building: the student's first photo, else the reference photo.
+    var displayImage: (fileName: String, isReference: Bool)? {
+        if let photo = sortedPhotos.first { return (photo.fileName, false) }
+        if !referenceImageFile.isEmpty { return (referenceImageFile, true) }
+        return nil
+    }
 
     var architectDisplay: String { architect.isEmpty ? "Architect unknown" : architect }
     var yearDisplay: String { yearBuilt.isEmpty ? "Year unknown" : yearBuilt }
