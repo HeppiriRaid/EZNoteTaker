@@ -32,6 +32,8 @@ enum RecordingControl {
 struct ToggleRecordingPauseIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Pause or Resume Recording"
     static var isDiscoverable: Bool = false
+    /// Pausing or resuming a recording is harmless, so allow it from the lock screen without Face ID.
+    static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
 
     func perform() async throws -> some IntentResult {
         await MainActor.run { RecordingControl.togglePause?() }
