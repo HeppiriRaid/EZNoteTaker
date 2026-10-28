@@ -7,6 +7,21 @@ import WidgetKit
 struct EZNoteTakerWidgets: WidgetBundle {
     var body: some Widget {
         RecordingLiveActivity()
+        ClassPhotoControl()
+    }
+}
+
+/// "Class Photo" button for the Lock Screen corners, Control Center or the Action button.
+/// Opens EZNoteTaker's lock-screen camera without Face ID.
+struct ClassPhotoControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "EZNoteTaker.ClassPhoto") {
+            ControlWidgetButton(action: ClassPhotoIntent()) {
+                Label("Class Photo", systemImage: "camera.viewfinder")
+            }
+        }
+        .displayName("Class Photo")
+        .description("Take class photos from the lock screen without unlocking.")
     }
 }
 

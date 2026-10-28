@@ -40,6 +40,9 @@ when it's ready.
   moment. After Claude's pass, each photo sits on its building's cheat-sheet card.
 - **Now discussing…** banner: Apple Intelligence guesses the current building every ~40 s.
   Photos get tagged with that guess.
+- **Lock-screen camera, no Face ID:** add the **Class Photo** control to a Lock Screen corner, Control
+  Center or the Action button. It opens EZNoteTaker's camera right on top of the lock screen; the
+  photos join the class at the moment they were taken (as soon as you close that camera).
 - **Lock-screen console** (Live Activity, also in the Dynamic Island): REC/PAUSED, live timer,
   photo count, last photo, and the building being discussed, with **Pause/Resume** that works without
   unlocking and **Photo**, which opens the camera after Face ID.
@@ -71,7 +74,8 @@ Pick one of these:
 
 1. Install **Xcode 26** from the Mac App Store and clone or download this repository.
 2. Open `EZNoteTaker.xcodeproj`. In **Signing & Capabilities**, set **Team** to your Apple ID for
-   **both** targets: **EZNoteTaker** and **EZNoteTakerWidgetsExtension** (the lock-screen console).
+   **all three** targets: **EZNoteTaker**, **EZNoteTakerWidgetsExtension** (lock-screen console and
+   Class Photo control) and **EZNoteTakerCapture** (lock-screen camera).
    If the bundle identifier is taken, don't edit it in the Signing tab; instead select the blue
    project icon › **Build Settings**, search for `APP_BUNDLE_ID`, and change it there (e.g.
    `com.yourname.EZNoteTaker`). Both targets follow it.

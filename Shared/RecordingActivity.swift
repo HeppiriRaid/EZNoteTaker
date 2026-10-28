@@ -25,6 +25,8 @@ struct RecordingActivityAttributes: ActivityAttributes {
 @MainActor
 enum RecordingControl {
     static var togglePause: (() -> Void)?
+    /// Opens the recording camera (when the Class Photo control is used on an unlocked phone).
+    static var openCamera: (() -> Void)?
 }
 
 /// Pause / Resume button on the lock screen. Runs inside the app (which keeps running in the

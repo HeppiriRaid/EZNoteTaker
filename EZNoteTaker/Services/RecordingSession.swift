@@ -54,6 +54,7 @@ final class RecordingSession {
 
     init() {
         RecordingControl.togglePause = { [weak self] in self?.togglePause() }
+        RecordingControl.openCamera = { [weak self] in self?.cameraRequested = true }
     }
 
     var isActive: Bool {
@@ -119,6 +120,7 @@ final class RecordingSession {
         observeInterruptions()
         phase = .recording
         startConsole(courseName: settings.courseName)
+        Self.shareWithLockScreenCamera(isRecording: true, className: settings.courseName)
         Haptics.success()
 
         clock = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
@@ -202,30 +204,58 @@ final class RecordingSession {
     // MARK: Actions
 
     func addPhoto(_ image: UIImage) {
-        guard let lecture, let context else { return }
         do {
-            let name = try FileStore.savePhoto(image)
-            let photo = LecturePhoto(fileName: name, takenAt: elapsed)
-            if let coordinate = LocationProvider.shared.current {
-                photo.latitude = coordinate.latitude
-                photo.longitude = coordinate.longitude
-            }
-            photo.liveHint = currentGuess?.label ?? ""
-            context.insert(photo)
-            photo.lecture = lecture
-            try? context.save()
-            photoCount += 1
-            defer { updateConsole() }
-            recentPhotos.insert(photo, at: 0)
-            // The photo marks a stop in the live transcript, with what was being discussed.
-            let about = currentGuess.map { "Now discussing: \($0.label)" }
-                ?? "“…\(recentTranscript(characters: 140).trimmingCharacters(in: .whitespaces))”"
-            lines.append(LiveLine(start: elapsed, text: about, photoFile: name))
-            if recentPhotos.count > 8 { recentPhotos.removeLast() }
+            insertLivePhoto(fileName: try FileStore.savePhoto(image), takenAt: elapsed)
             Haptics.tap()
         } catch {
             Haptics.error()
         }
+    }
+
+    /// Adds a photo to the class being recorded and shows it as a stop in the live transcript.
+    private func insertLivePhoto(fileName name: String, takenAt: Double) {
+        guard let lecture, let context else { return }
+        let photo = LecturePhoto(fileName: name, takenAt: takenAt)
+        if let coordinate = LocationProvider.shared.current {
+            photo.latitude = coordinate.latitude
+            photo.longitude = coordinate.longitude
+        }
+        photo.liveHint = currentGuess?.label ?? ""
+        context.insert(photo)
+        photo.lecture = lecture
+        try? context.save()
+        photoCount += 1
+        recentPhotos.insert(photo, at: 0)
+        if recentPhotos.count > 8 { recentPhotos.removeLast() }
+        // The photo marks a stop in the live transcript, with what was being discussed.
+        let about = currentGuess.map { "Now discussing: \($0.label)" }
+            ?? "“…\(recentTranscript(characters: 140).trimmingCharacters(in: .whitespaces))”"
+        let line = LiveLine(start: takenAt, text: about, photoFile: name)
+        if let index = lines.firstIndex(where: { $0.start > takenAt }) { lines.insert(line, at: index) } else { lines.append(line) }
+        updateConsole()
+    }
+
+    /// A photo from the lock-screen camera. Goes into the class being recorded at the moment it was
+    /// taken; otherwise into the class that was recorded at that time (or the latest class).
+    func importLockedPhoto(data: Data, capturedAt: Date, context: ModelContext) {
+        guard let name = try? FileStore.savePhotoData(data) else { return }
+        if lecture != nil {
+            insertLivePhoto(fileName: name, takenAt: max(0, audio.activeSeconds - Date().timeIntervalSince(capturedAt)))
+            return
+        }
+        let lectures = (try? context.fetch(FetchDescriptor<Lecture>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? []
+        let target = lectures.first { capturedAt >= $0.date && capturedAt <= $0.date.addingTimeInterval($0.durationSeconds + 600) }
+            ?? lectures.first
+        guard let target else {
+            FileStore.delete(fileName: name, in: FileStore.photoDirectory)
+            return
+        }
+        let photo = LecturePhoto(fileName: name, takenAt: min(max(0, capturedAt.timeIntervalSince(target.date)), target.durationSeconds))
+        photo.capturedDate = capturedAt
+        context.insert(photo)
+        photo.lecture = target
+        PhotoPlacement.fillGaps(in: target)
+        try? context.save()
     }
 
     func addMarker(label: String) {
@@ -305,6 +335,7 @@ final class RecordingSession {
 
     private func cleanUp() {
         endConsole()
+        Self.shareWithLockScreenCamera(isRecording: false, className: AppSettings.shared.courseName)
         LocationProvider.shared.stop()
         UIApplication.shared.isIdleTimerDisabled = false
         if let interruptionObserver { NotificationCenter.default.removeObserver(interruptionObserver) }
@@ -383,6 +414,14 @@ final class RecordingSession {
             for activity in Activity<RecordingActivityAttributes>.activities {
                 await activity.end(nil, dismissalPolicy: .immediate)
             }
+        }
+    }
+
+    /// Tells the lock-screen camera whether a class is being recorded (shown at its top).
+    static func shareWithLockScreenCamera(isRecording: Bool, className: String) {
+        Task {
+            try? await ClassPhotoIntent.updateAppContext(
+                ClassPhotoContext(isRecording: isRecording, className: className.isEmpty ? "Class" : className))
         }
     }
 

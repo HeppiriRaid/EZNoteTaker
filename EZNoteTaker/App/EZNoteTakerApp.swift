@@ -1,3 +1,4 @@
+import LockedCameraCapture
 import SwiftData
 import SwiftUI
 
@@ -82,7 +83,19 @@ struct RootView: View {
         .onChange(of: recorder.isActive) { _, active in
             if active { showRecorder = true }
         }
-        .onAppear(perform: recoverInterruptedRecordings)
+        .onAppear {
+            recoverInterruptedRecordings()
+            LockedPhotoImporter.start(recorder: recorder, context: context)
+        }
+        // "Open App" in the lock-screen camera: show the class being recorded.
+        .onContinueUserActivity(NSUserActivityTypeLockedCameraCapture) { _ in
+            if recorder.isActive { showRecorder = true }
+        }
+        // "Class Photo" control used on an unlocked phone: open the recording camera.
+        .onChange(of: recorder.cameraRequested) { _, requested in
+            guard requested else { return }
+            if recorder.isActive { showRecorder = true } else { recorder.cameraRequested = false }
+        }
         .alert("Couldn't open your saved classes", isPresented: Binding(
             get: { databaseError != nil }, set: { if !$0 { databaseError = nil } }
         )) {
